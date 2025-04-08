@@ -28,11 +28,12 @@ function App() {
           <Route path="/contact" element={<ContactUs />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/order-wizard" element={<OrderWizard />} /> {/* Made public */}
 
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>
             <Route path="/order" element={<OrderPage />} />
-            <Route path="/order-wizard" element={<OrderWizard />} /> {/* Add OrderWizard route */}
+            {/* <Route path="/order-wizard" element={<OrderWizard />} /> */} {/* Moved to public */}
             <Route path="/dashboard" element={<AdminDashboard />} /> {/* Add protected dashboard route */}
             {/* Add other protected routes here */}
           </Route>

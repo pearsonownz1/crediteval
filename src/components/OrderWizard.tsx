@@ -31,7 +31,9 @@ import {
   FileText,
   Globe,
   DollarSign,
+  User as UserIcon, // Add UserIcon
 } from "lucide-react";
+import { supabase } from "../lib/supabaseClient"; // Add supabase import
 
 interface OrderWizardProps {
   onComplete?: (orderData: any) => void;
@@ -43,10 +45,14 @@ const OrderWizard = ({
   initialStep = 0,
 }: OrderWizardProps) => {
   const [currentStep, setCurrentStep] = useState(initialStep);
+  const [orderId, setOrderId] = useState<string | null>(null); // Add state for order ID
+  const [isSubmitting, setIsSubmitting] = useState(false); // Add state for submission status
+  const [error, setError] = useState<string | null>(null); // Add state for errors
+
   const [orderData, setOrderData] = useState({
-    account: {
+    customerInfo: { // Renamed from account
       email: "",
-      password: "",
+      // password: "", // Removed password
       firstName: "",
       lastName: "",
     },
@@ -69,11 +75,60 @@ const OrderWizard = ({
   const totalSteps = 5;
   const progressPercentage = ((currentStep + 1) / totalSteps) * 100;
 
-  const handleNext = () => {
-    if (currentStep < totalSteps - 1) {
+  const handleNext = async () => { // Make async
+    setError(null); // Clear previous errors
+
+    // --- Save Customer Info on Step 0 ---
+    if (currentStep === 0) {
+      const { firstName, lastName, email } = orderData.customerInfo;
+      if (!firstName || !lastName || !email) {
+        setError("Please fill in all required fields.");
+        return;
+      }
+
+      setIsSubmitting(true);
+      try {
+        const { data, error: insertError } = await supabase
+          .from("orders")
+          .insert([
+            {
+              first_name: firstName,
+              last_name: lastName,
+              email: email,
+              // Add other initial order data if needed, e.g., status: 'pending'
+            },
+          ])
+          .select('id') // Select the ID of the newly created order
+          .single(); // Expect a single row back
+
+        if (insertError) {
+          throw insertError;
+        }
+
+        if (data && data.id) {
+           setOrderId(data.id); // Store the new order ID
+           console.log("Order created with ID:", data.id);
+           setCurrentStep(currentStep + 1); // Proceed to next step
+        } else {
+             throw new Error("Failed to create order or retrieve ID.");
+        }
+
+      } catch (err: any) {
+        console.error("Error saving customer info:", err);
+        setError(err.message || "Failed to save information. Please try again.");
+      } finally {
+        setIsSubmitting(false);
+      }
+    // --- End Save Customer Info ---
+    } else if (currentStep < totalSteps - 1) {
+      // Logic for other steps (just move forward)
       setCurrentStep(currentStep + 1);
     } else {
-      onComplete(orderData);
+      // Final step completion (potentially update the order with remaining data)
+      // For now, just call onComplete
+      // TODO: Add logic here to update the existing order record using orderId
+      console.log("Completing order with ID:", orderId);
+      onComplete({ ...orderData, orderId });
     }
   };
 
@@ -91,7 +146,7 @@ const OrderWizard = ({
   };
 
   const steps = [
-    { title: "Account", icon: <FileText className="h-5 w-5" /> },
+    { title: "Your Info", icon: <UserIcon className="h-5 w-5" /> }, // Changed first step
     { title: "Documents", icon: <Upload className="h-5 w-5" /> },
     { title: "Services", icon: <Globe className="h-5 w-5" /> },
     { title: "Review", icon: <Check className="h-5 w-5" /> },
@@ -140,9 +195,10 @@ const OrderWizard = ({
               transition={{ duration: 0.3 }}
             >
               {currentStep === 0 && (
-                <AccountStep
-                  data={orderData.account}
-                  updateData={(data) => updateOrderData("account", data)}
+                <CustomerInfoStep // Changed component
+                  data={orderData.customerInfo} // Changed data source
+                  updateData={(data) => updateOrderData("customerInfo", data)} // Changed section name
+                  error={error} // Pass error state
                 />
               )}
 
@@ -183,9 +239,9 @@ const OrderWizard = ({
             <ArrowLeft className="mr-2 h-4 w-4" /> Back
           </Button>
 
-          <Button onClick={handleNext}>
-            {currentStep === totalSteps - 1 ? "Complete Order" : "Next"}
-            {currentStep !== totalSteps - 1 && (
+          <Button onClick={handleNext} disabled={isSubmitting && currentStep === 0}>
+            {isSubmitting && currentStep === 0 ? "Saving..." : currentStep === totalSteps - 1 ? "Complete Order" : "Next"}
+            {!(isSubmitting && currentStep === 0) && currentStep !== totalSteps - 1 && (
               <ArrowRight className="ml-2 h-4 w-4" />
             )}
           </Button>
@@ -195,98 +251,61 @@ const OrderWizard = ({
   );
 };
 
-interface AccountStepProps {
-  data: any;
+// --- New CustomerInfoStep Component ---
+interface CustomerInfoStepProps {
+  data: {
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
   updateData: (data: any) => void;
+  error: string | null; // Add error prop
 }
 
-const AccountStep = ({ data, updateData }: AccountStepProps) => {
-  const [mode, setMode] = useState<"login" | "create">("create");
-
+const CustomerInfoStep = ({ data, updateData, error }: CustomerInfoStepProps) => {
   return (
     <div className="space-y-4">
-      <Tabs
-        defaultValue={mode}
-        onValueChange={(value) => setMode(value as "login" | "create")}
-      >
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="login">Login</TabsTrigger>
-          <TabsTrigger value="create">Create Account</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="login" className="space-y-4 pt-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="your@email.com"
-              value={data.email}
-              onChange={(e) => updateData({ email: e.target.value })}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              value={data.password}
-              onChange={(e) => updateData({ password: e.target.value })}
-            />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="create" className="space-y-4 pt-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="firstName">First Name</Label>
-              <Input
-                id="firstName"
-                placeholder="John"
-                value={data.firstName}
-                onChange={(e) => updateData({ firstName: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="lastName">Last Name</Label>
-              <Input
-                id="lastName"
-                placeholder="Doe"
-                value={data.lastName}
-                onChange={(e) => updateData({ lastName: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="newEmail">Email</Label>
-            <Input
-              id="newEmail"
-              type="email"
-              placeholder="your@email.com"
-              value={data.email}
-              onChange={(e) => updateData({ email: e.target.value })}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="newPassword">Password</Label>
-            <Input
-              id="newPassword"
-              type="password"
-              placeholder="••••••••"
-              value={data.password}
-              onChange={(e) => updateData({ password: e.target.value })}
-            />
-          </div>
-        </TabsContent>
-      </Tabs>
+       <h3 className="text-lg font-medium">Your Information</h3>
+       <p className="text-sm text-muted-foreground">Please provide your contact details.</p>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="firstName">First Name</Label>
+          <Input
+            id="firstName"
+            placeholder="John"
+            value={data.firstName}
+            onChange={(e) => updateData({ firstName: e.target.value })}
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="lastName">Last Name</Label>
+          <Input
+            id="lastName"
+            placeholder="Doe"
+            value={data.lastName}
+            onChange={(e) => updateData({ lastName: e.target.value })}
+            required
+          />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="email">Email</Label>
+        <Input
+          id="email"
+          type="email"
+          placeholder="you@example.com"
+          value={data.email}
+          onChange={(e) => updateData({ email: e.target.value })}
+          required
+        />
+      </div>
+       {error && <p className="text-red-500 text-sm">{error}</p>}
     </div>
   );
 };
+// --- End CustomerInfoStep Component ---
+
 
 interface DocumentUploadStepProps {
   documents: any[];
@@ -594,11 +613,11 @@ const ReviewStep = ({ orderData }: ReviewStepProps) => {
       <div className="space-y-4">
         <div className="bg-muted p-4 rounded-lg space-y-3">
           <div>
-            <h4 className="font-medium">Account Information</h4>
+            <h4 className="font-medium">Customer Information</h4> {/* Changed title */}
             <p className="text-sm">
-              {orderData.account.firstName} {orderData.account.lastName}
+              {orderData.customerInfo.firstName} {orderData.customerInfo.lastName} {/* Changed source */}
             </p>
-            <p className="text-sm">{orderData.account.email}</p>
+            <p className="text-sm">{orderData.customerInfo.email}</p> {/* Changed source */}
           </div>
 
           <div>
