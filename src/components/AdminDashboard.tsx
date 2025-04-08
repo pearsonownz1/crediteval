@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom"; // Import useNavigate
+import { supabase } from "../lib/supabaseClient"; // Corrected import path
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Card,
@@ -46,6 +48,7 @@ import {
   MoreVertical,
   ChevronDown,
   ChevronUp,
+  LogOut, // Import LogOut icon
 } from "lucide-react";
 
 interface Order {
@@ -131,6 +134,7 @@ const mockOrders: Order[] = [
 ];
 
 const AdminDashboard = () => {
+  const navigate = useNavigate(); // Initialize navigate
   const [orders, setOrders] = useState<Order[]>(mockOrders);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [messageDialogOpen, setMessageDialogOpen] = useState(false);
@@ -164,11 +168,27 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      navigate('/login'); // Redirect to login page after logout
+    } catch (error: any) {
+      console.error('Error logging out:', error.message);
+      // Optionally show an error message to the user
+    }
+  };
+
   return (
     <div className="bg-gray-50 min-h-screen p-6">
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold text-navy-700">Admin Dashboard</h1>
-        <p className="text-gray-500">Manage orders, clients, and documents</p>
+      <header className="mb-8 flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-navy-700">Admin Dashboard</h1>
+          <p className="text-gray-500">Manage orders, clients, and documents</p>
+        </div>
+        <Button variant="outline" onClick={handleLogout}>
+          <LogOut className="mr-2 h-4 w-4" /> Logout
+        </Button>
       </header>
 
       {/* Stats Overview */}

@@ -87,7 +87,7 @@ const Home = () => {
           </nav>
           <div className="flex items-center gap-4">
             <Button asChild className="bg-primary hover:bg-primary/90">
-              <Link to="/order">Start Your Order</Link>
+              <Link to="/order-wizard">Start Your Order</Link>
             </Button>
           </div>
         </div>
@@ -116,7 +116,7 @@ const Home = () => {
                   size="lg"
                   className="bg-primary hover:bg-primary/90"
                 >
-                  <Link to="/order">Start Your Order</Link>
+                  <Link to="/order-wizard">Start Your Order</Link>
                 </Button>
                 <Button asChild size="lg" variant="outline">
                   <Link to="/quote">Get My Quote</Link>
@@ -480,7 +480,7 @@ const Home = () => {
               size="lg"
               className="bg-primary hover:bg-primary/90"
             >
-              <Link to="/order">Start Your Order Now</Link>
+              <Link to="/order-wizard">Start Your Order Now</Link>
             </Button>
           </div>
         </div>
@@ -679,7 +679,7 @@ const Home = () => {
               size="lg"
               className="bg-white text-primary hover:bg-gray-100"
             >
-              <Link to="/order">Start Your Order</Link>
+              <Link to="/order-wizard">Start Your Order</Link>
             </Button>
           </div>
         </div>
