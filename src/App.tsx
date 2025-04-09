@@ -11,6 +11,7 @@ import Login from "./components/Auth/Login"; // Import Login
 import Register from "./components/Auth/Register"; // Import Register
 import ProtectedRoute from "./components/Auth/ProtectedRoute";
 import AdminDashboard from "./components/AdminDashboard";
+import QuotePage from "./components/QuotePage"; // Import QuotePage
 import OrderWizard from "./components/OrderWizard";
 import OrderSuccessPage from "./components/OrderSuccessPage"; // Import OrderSuccessPage
 import routes from "tempo-routes";
@@ -29,6 +30,7 @@ function App() {
           <Route path="/contact" element={<ContactUs />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/quote" element={<QuotePage />} /> {/* Add QuotePage route */}
           <Route path="/order-wizard" element={<OrderWizard />} /> {/* Made public */}
           <Route path="/order-success" element={<OrderSuccessPage />} /> {/* Add success page route */}
 
