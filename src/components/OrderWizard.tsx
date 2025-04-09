@@ -442,7 +442,11 @@ const DocumentUploadStep = ({
     }
   };
 
+  // Remove the fileInputRef as it's not needed for the label approach
+  // const fileInputRef = useRef<HTMLInputElement>(null);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log("handleFileChange triggered"); // Add log here
     if (e.target.files) {
       const mappedFiles = Array.from(e.target.files).map((file) => ({ // Rename newFiles to mappedFiles
         name: file.name,
@@ -469,39 +473,42 @@ const DocumentUploadStep = ({
   return (
     <div className="space-y-6">
       <div
-        className="border-2 border-dashed rounded-lg p-10 text-center cursor-pointer hover:bg-muted/50 transition-colors"
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-      >
-        <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
-        <h3 className="text-lg font-medium">
-          Drag and drop your documents here
-        </h3>
-        <p className="text-sm text-muted-foreground mt-1">or</p>
-        <div className="mt-4">
-          {/* Remove label wrapper, add onClick to button, add ref to input */}
+      className="border-2 border-dashed rounded-lg p-10 text-center cursor-pointer hover:bg-muted/50 transition-colors"
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      // Remove the onClick from the main div
+    >
+      {/* Revert to using label and Button */}
+      <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
+      <h3 className="text-lg font-medium">
+        Drag and drop your documents here
+      </h3>
+      <p className="text-sm text-muted-foreground mt-1">or</p>
+      <div className="mt-4">
+        <label htmlFor="file-upload" className="cursor-pointer">
           <Button
             variant="outline"
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => console.log("Browse Files Button Clicked!")} // Add direct click log
           >
             Browse Files
           </Button>
-          <input
-            id="file-upload" // Keep id for potential styling/other uses, though label is removed
-            type="file"
-            multiple
-            className="hidden"
-            onChange={handleFileChange}
-            ref={fileInputRef} // Assign the ref to the input
-          />
-        </div>
-        <p className="text-xs text-muted-foreground mt-4">
-          Supported formats: PDF, JPG, PNG, DOCX (Max 10MB per file)
-        </p>
+        </label>
+        <input
+          id="file-upload" // ID is needed for the label's htmlFor
+          type="file"
+          multiple
+          className="hidden" // Hide the input again
+          onChange={handleFileChange}
+          // Remove the ref attribute
+        />
       </div>
+      <p className="text-xs text-muted-foreground mt-4">
+        Supported formats: PDF, JPG, PNG, DOCX (Max 10MB per file)
+      </p>
+    </div> // This closes the main dropzone div correctly
 
-      {documents.length > 0 && (
+    {documents.length > 0 && (
         <div className="space-y-2">
           <h3 className="font-medium">Uploaded Documents</h3>
           <div className="space-y-2">
