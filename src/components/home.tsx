@@ -26,6 +26,7 @@ import {
   Shield,
   ChevronDown,
 } from "lucide-react";
+import TestimonialCarousel from "./TestimonialCarousel"; // Import the carousel component
 
 const Home = () => {
   return (
@@ -152,6 +153,9 @@ const Home = () => {
           </div>
         </div>
       </section>
+
+      {/* Testimonial Carousel Section */}
+      <TestimonialCarousel />
 
       {/* Services Overview */}
       <section className="py-20 bg-white">
