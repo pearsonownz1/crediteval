@@ -442,8 +442,10 @@ const DocumentUploadStep = ({
     }
   };
 
-  // Remove the fileInputRef as it's not needed for the label approach
-  // const fileInputRef = useRef<HTMLInputElement>(null);
+  // Re-add the fileInputRef
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // REMOVED DUPLICATE COMMENTED LINE
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     console.log("handleFileChange triggered"); // Add log here
@@ -489,7 +491,10 @@ const DocumentUploadStep = ({
           <Button
             variant="outline"
             type="button"
-            onClick={() => console.log("Browse Files Button Clicked!")} // Add direct click log
+            onClick={() => {
+              console.log("Browse Files Button Clicked! Triggering input click...");
+              fileInputRef.current?.click(); // Programmatically click the hidden input
+            }}
           >
             Browse Files
           </Button>
@@ -500,7 +505,7 @@ const DocumentUploadStep = ({
           multiple
           className="hidden" // Hide the input again
           onChange={handleFileChange}
-          // Remove the ref attribute
+          ref={fileInputRef} // Add the ref back
         />
       </div>
       <p className="text-xs text-muted-foreground mt-4">
