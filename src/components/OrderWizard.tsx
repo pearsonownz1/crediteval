@@ -338,6 +338,7 @@ const DocumentUploadStep = ({
   updateDocuments,
   orderId, // Receive orderId
 }: DocumentUploadStepProps) => {
+  // Ensure fileInputRef is declared ONLY ONCE
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Function to update a specific document's state
@@ -441,11 +442,6 @@ const DocumentUploadStep = ({
       });
     }
   };
-
-  // Re-add the fileInputRef
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // REMOVED DUPLICATE COMMENTED LINE
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     console.log("handleFileChange triggered"); // Add log here
