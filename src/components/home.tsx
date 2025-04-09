@@ -34,10 +34,10 @@ const Home = () => {
       {/* Sticky Navigation Bar */}
       <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
         <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Globe className="h-6 w-6 text-primary" />
-            <span className="text-xl font-bold text-primary">CreditEval</span>
-          </div>
+          <Link to="/" className="flex items-center gap-2"> {/* Wrap logo in Link */}
+            <img src="/logo.png" alt="CreditEval Logo" className="h-10" /> {/* Use img tag, adjust height as needed */}
+            {/* Removed the text span */}
+          </Link>
           <nav className="hidden md:flex items-center space-x-6">
             <Link to="/" className="text-sm font-medium hover:text-primary">
               Home
