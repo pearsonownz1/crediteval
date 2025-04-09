@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react"; // Import useRef
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 import {
@@ -56,7 +56,16 @@ const OrderWizard = ({
       firstName: "",
       lastName: "",
     },
-    documents: [] as any[],
+    documents: [] as { // Define a more detailed document state
+      name: string;
+      size: number;
+      type: string;
+      file: File;
+      status: 'pending' | 'uploading' | 'success' | 'error';
+      error?: string;
+      path?: string; // Store the path after successful upload
+      progress?: number; // Optional: for upload progress
+    }[],
     services: {
       type: "translation",
       language: "spanish",
@@ -207,9 +216,10 @@ const OrderWizard = ({
                   documents={orderData.documents}
                   updateDocuments={(docs) =>
                     setOrderData({ ...orderData, documents: docs })
-                  }
-                />
-              )}
+                   }
+                   orderId={orderId} // Pass orderId down
+                 />
+               )}
 
               {currentStep === 2 && (
                 <ServiceSelectionStep
@@ -307,15 +317,108 @@ const CustomerInfoStep = ({ data, updateData, error }: CustomerInfoStepProps) =>
 // --- End CustomerInfoStep Component ---
 
 
+// --- Update DocumentUploadStep ---
 interface DocumentUploadStepProps {
-  documents: any[];
-  updateDocuments: (documents: any[]) => void;
+  documents: { // Use the detailed document type
+    name: string;
+    size: number;
+    type: string;
+    file: File;
+    status: 'pending' | 'uploading' | 'success' | 'error';
+    error?: string;
+    path?: string;
+    progress?: number;
+  }[];
+  updateDocuments: (documents: DocumentUploadStepProps['documents']) => void;
+  orderId: string | null; // Add orderId prop
 }
 
 const DocumentUploadStep = ({
   documents = [],
   updateDocuments,
+  orderId, // Receive orderId
 }: DocumentUploadStepProps) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Function to update a specific document's state
+  const updateDocumentStatus = (index: number, newStatus: Partial<DocumentUploadStepProps['documents'][0]>) => {
+    const updatedDocs = [...documents];
+    // Ensure the index is valid before attempting to update
+    if (updatedDocs[index]) {
+        updatedDocs[index] = { ...updatedDocs[index], ...newStatus };
+        updateDocuments(updatedDocs);
+    } else {
+        console.error("Attempted to update status for invalid index:", index);
+    }
+  };
+
+  // Function to upload a single file
+  const uploadFile = async (file: File, index: number) => {
+    if (!orderId) {
+      console.error("Order ID is missing, cannot upload file.");
+      updateDocumentStatus(index, { status: 'error', error: 'Order ID missing.' });
+      return;
+    }
+
+    try {
+      updateDocumentStatus(index, { status: 'uploading', progress: 0 });
+      const filePath = `public/${orderId}/${Date.now()}_${file.name}`; // Unique path within order folder
+
+      const { data, error } = await supabase.storage
+        .from('documents') // Use the bucket name
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+          // contentType: file.type // Optional: Supabase usually infers this
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      console.log('Upload successful:', data);
+      const newPath = data.path;
+      updateDocumentStatus(index, { status: 'success', path: newPath, progress: 100 });
+
+      // --- Update document_paths in the orders table ---
+      try {
+        // 1. Fetch current paths
+        const { data: orderData, error: fetchError } = await supabase
+          .from('orders')
+          .select('document_paths')
+          .eq('id', orderId)
+          .single();
+
+        if (fetchError) throw fetchError;
+
+        // 2. Append new path (handle null or existing array)
+        const currentPaths = orderData?.document_paths || [];
+        const updatedPaths = [...currentPaths, newPath];
+
+        // 3. Update the order record
+        const { error: updateError } = await supabase
+          .from('orders')
+          .update({ document_paths: updatedPaths })
+          .eq('id', orderId);
+
+        if (updateError) throw updateError;
+
+        console.log('Order document_paths updated successfully.');
+
+      } catch (dbError: any) {
+          console.error('Error updating order document_paths:', dbError);
+          // Optionally revert status or show specific DB error to user
+          // For now, the file is uploaded, but the DB link failed.
+          updateDocumentStatus(index, { status: 'error', error: `Upload succeeded, but DB update failed: ${dbError.message}` });
+      }
+      // --- End update document_paths ---
+
+    } catch (error: any) {
+      console.error('Error uploading file:', file.name, error);
+      updateDocumentStatus(index, { status: 'error', error: error.message || 'Upload failed', progress: undefined });
+    }
+  };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
   };
@@ -323,25 +426,37 @@ const DocumentUploadStep = ({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (e.dataTransfer.files) {
-      const newFiles = Array.from(e.dataTransfer.files).map((file) => ({
+      const mappedFiles = Array.from(e.dataTransfer.files).map((file) => ({ // Rename newFiles to mappedFiles
         name: file.name,
         size: file.size,
         type: file.type,
         file,
+        status: 'pending' as const, // Add initial status
       }));
-      updateDocuments([...documents, ...newFiles]);
+      const currentDocCount = documents.length;
+      updateDocuments([...documents, ...mappedFiles]);
+      // Trigger upload for each new file
+      mappedFiles.forEach((_, i) => {
+        uploadFile(mappedFiles[i].file, currentDocCount + i);
+      });
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const newFiles = Array.from(e.target.files).map((file) => ({
+      const mappedFiles = Array.from(e.target.files).map((file) => ({ // Rename newFiles to mappedFiles
         name: file.name,
         size: file.size,
         type: file.type,
         file,
+        status: 'pending' as const, // Add initial status
       }));
-      updateDocuments([...documents, ...newFiles]);
+      const currentDocCount = documents.length;
+      updateDocuments([...documents, ...mappedFiles]);
+      // Trigger upload for each new file
+      mappedFiles.forEach((_, i) => {
+        uploadFile(mappedFiles[i].file, currentDocCount + i);
+      });
     }
   };
 
@@ -364,18 +479,22 @@ const DocumentUploadStep = ({
         </h3>
         <p className="text-sm text-muted-foreground mt-1">or</p>
         <div className="mt-4">
-          <label htmlFor="file-upload" className="cursor-pointer">
-            <Button variant="outline" type="button">
-              Browse Files
-            </Button>
-            <input
-              id="file-upload"
-              type="file"
-              multiple
-              className="hidden"
-              onChange={handleFileChange}
-            />
-          </label>
+          {/* Remove label wrapper, add onClick to button, add ref to input */}
+          <Button
+            variant="outline"
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Browse Files
+          </Button>
+          <input
+            id="file-upload" // Keep id for potential styling/other uses, though label is removed
+            type="file"
+            multiple
+            className="hidden"
+            onChange={handleFileChange}
+            ref={fileInputRef} // Assign the ref to the input
+          />
         </div>
         <p className="text-xs text-muted-foreground mt-4">
           Supported formats: PDF, JPG, PNG, DOCX (Max 10MB per file)
@@ -391,19 +510,34 @@ const DocumentUploadStep = ({
                 key={index}
                 className="flex items-center justify-between p-3 bg-muted rounded-md"
               >
-                <div className="flex items-center">
-                  <FileText className="h-5 w-5 mr-2 text-primary" />
-                  <div>
-                    <p className="text-sm font-medium">{doc.name}</p>
+                <div className="flex items-center flex-grow mr-4 overflow-hidden"> {/* Added flex-grow and overflow */}
+                  <FileText className="h-5 w-5 mr-2 text-primary flex-shrink-0" /> {/* Added flex-shrink-0 */}
+                  <div className="flex-grow overflow-hidden"> {/* Added flex-grow and overflow */}
+                    <p className="text-sm font-medium truncate">{doc.name}</p> {/* Added truncate */}
                     <p className="text-xs text-muted-foreground">
                       {(doc.size / 1024 / 1024).toFixed(2)} MB
+                      {/* Display Upload Status */}
+                      {doc.status === 'uploading' && (
+                        <span className="ml-2 text-blue-500">Uploading... {doc.progress !== undefined ? `${doc.progress}%` : ''}</span>
+                      )}
+                      {doc.status === 'success' && (
+                        <span className="ml-2 text-green-500">Uploaded</span>
+                      )}
+                      {doc.status === 'error' && (
+                        <span className="ml-2 text-red-500" title={doc.error}>Error</span>
+                      )}
                     </p>
+                     {/* Optional: Show progress bar */}
+                     {doc.status === 'uploading' && doc.progress !== undefined && (
+                        <Progress value={doc.progress} className="h-1 mt-1" />
+                     )}
                   </div>
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => removeDocument(index)}
+                  disabled={doc.status === 'uploading'} // Disable remove during upload
                 >
                   Remove
                 </Button>
