@@ -1,6 +1,7 @@
 import React from "react";
 import Slider from "react-slick";
 import { Star } from "lucide-react"; // Assuming you use lucide-react for icons
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar"; // Import Avatar components
 
 // Define the testimonial structure
 interface Testimonial {
@@ -97,29 +98,37 @@ const TestimonialCarousel = () => {
           What Our Clients Say
         </h2>
         <Slider {...settings}>
-          {testimonials.map((testimonial) => (
-            <div key={testimonial.id} className="px-2 md:px-4"> {/* Add padding between slides */}
-              <div className="bg-white p-6 rounded-lg shadow-md h-full flex flex-col"> {/* Ensure consistent height if needed */}
-                <div className="flex items-center mb-4">
-                  <img
-                    src={testimonial.headshotUrl}
-                    alt={testimonial.name}
-                    className="w-16 h-16 rounded-full mr-4 object-cover"
-                  />
-                  <div>
-                    <p className="font-bold text-lg text-gray-900">{testimonial.name}</p>
-                    <div className="flex text-yellow-400 mt-1">
-                      {/* Static 5 stars */}
-                      {[...Array(5)].map((_, i) => (
-                        <Star key={i} className="w-5 h-5 fill-current" />
-                      ))}
+          {testimonials.map((testimonial) => {
+            // Generate initials for fallback
+            const initials = testimonial.name
+              .split(' ')
+              .map(n => n[0])
+              .slice(0, 2)
+              .join('');
+
+            return (
+              <div key={testimonial.id} className="px-2 md:px-4"> {/* Add padding between slides */}
+                <div className="bg-white p-6 rounded-lg shadow-md h-full flex flex-col"> {/* Ensure consistent height if needed */}
+                  <div className="flex items-center mb-4">
+                    <Avatar className="w-16 h-16 mr-4">
+                      <AvatarImage src={testimonial.headshotUrl} alt={testimonial.name} />
+                      <AvatarFallback>{initials}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-bold text-lg text-gray-900">{testimonial.name}</p>
+                      <div className="flex text-yellow-400 mt-1">
+                        {/* Static 5 stars */}
+                        {[...Array(5)].map((_, i) => (
+                          <Star key={i} className="w-5 h-5 fill-current" />
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                </div>
-                <p className="text-gray-600 italic flex-grow">"{testimonial.testimonial}"</p>
-              </div>
-            </div>
-          ))}
+                  </div> {/* This closes the flex items-center div */}
+                  <p className="text-gray-600 italic flex-grow">"{testimonial.testimonial}"</p>
+                </div> {/* This closes the bg-white card div */}
+              </div> // This closes the px-2 wrapper div
+            );
+          })}
         </Slider>
       </div>
     </div>
