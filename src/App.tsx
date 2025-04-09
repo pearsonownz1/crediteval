@@ -9,9 +9,10 @@ import AboutUs from "./components/AboutUs";
 import ContactUs from "./components/ContactUs";
 import Login from "./components/Auth/Login"; // Import Login
 import Register from "./components/Auth/Register"; // Import Register
-import ProtectedRoute from "./components/Auth/ProtectedRoute"; // Import ProtectedRoute
-import AdminDashboard from "./components/AdminDashboard"; // Import AdminDashboard
-import OrderWizard from "./components/OrderWizard"; // Import OrderWizard
+import ProtectedRoute from "./components/Auth/ProtectedRoute";
+import AdminDashboard from "./components/AdminDashboard";
+import OrderWizard from "./components/OrderWizard";
+import OrderSuccessPage from "./components/OrderSuccessPage"; // Import OrderSuccessPage
 import routes from "tempo-routes";
 
 function App() {
@@ -29,6 +30,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/order-wizard" element={<OrderWizard />} /> {/* Made public */}
+          <Route path="/order-success" element={<OrderSuccessPage />} /> {/* Add success page route */}
 
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>

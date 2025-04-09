@@ -1,5 +1,11 @@
-import React, { useState, useRef } from "react"; // Import useRef
+import React, { useState, useRef, useEffect } from "react"; // Add useEffect
+import { useNavigate } from "react-router-dom"; // Add useNavigate
 import { motion, AnimatePresence } from "framer-motion";
+import {
+  useStripe,
+  useElements,
+  CardElement,
+} from "@stripe/react-stripe-js"; // Import Stripe hooks and CardElement
 import { Button } from "./ui/button";
 import {
   Card,
@@ -31,9 +37,22 @@ import {
   FileText,
   Globe,
   DollarSign,
-  User as UserIcon, // Add UserIcon
+  User as UserIcon,
 } from "lucide-react";
-import { supabase } from "../lib/supabaseClient"; // Add supabase import
+import { supabase } from "../lib/supabaseClient";
+
+// Define the document type explicitly for clarity
+type DocumentState = {
+  id: string; // Unique identifier for state management
+  name: string;
+  size: number;
+  type: string;
+  file: File;
+  status: 'pending' | 'uploading' | 'success' | 'error';
+  error?: string;
+  path?: string;
+  progress?: number;
+};
 
 interface OrderWizardProps {
   onComplete?: (orderData: any) => void;
@@ -46,8 +65,14 @@ const OrderWizard = ({
 }: OrderWizardProps) => {
   const [currentStep, setCurrentStep] = useState(initialStep);
   const [orderId, setOrderId] = useState<string | null>(null); // Add state for order ID
-  const [isSubmitting, setIsSubmitting] = useState(false); // Add state for submission status
-  const [error, setError] = useState<string | null>(null); // Add state for errors
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
+
+  // Stripe hooks
+  const stripe = useStripe();
+  const elements = useElements();
+  const navigate = useNavigate(); // Add navigate hook
 
   const [orderData, setOrderData] = useState({
     customerInfo: { // Renamed from account
@@ -56,16 +81,7 @@ const OrderWizard = ({
       firstName: "",
       lastName: "",
     },
-    documents: [] as { // Define a more detailed document state
-      name: string;
-      size: number;
-      type: string;
-      file: File;
-      status: 'pending' | 'uploading' | 'success' | 'error';
-      error?: string;
-      path?: string; // Store the path after successful upload
-      progress?: number; // Optional: for upload progress
-    }[],
+    documents: [] as DocumentState[], // Use the defined type
     services: {
       type: "translation",
       language: "spanish",
@@ -77,12 +93,29 @@ const OrderWizard = ({
       cardNumber: "",
       expiryDate: "",
       cvv: "",
-      nameOnCard: "",
+      // Removed cardNumber, expiryDate, cvv, nameOnCard
     },
   });
 
-  const totalSteps = 5;
+  const totalSteps = 5; // Your Info, Documents, Services, Review, Payment
   const progressPercentage = ((currentStep + 1) / totalSteps) * 100;
+
+  // --- Calculate Price Function (moved here for use in handleNext) ---
+  const calculatePrice = (currentOrderData: typeof orderData) => {
+    let basePrice = 0;
+    switch (currentOrderData.services.type) {
+      case "translation": basePrice = 75; break;
+      case "evaluation": basePrice = 150; break;
+      case "both": basePrice = 200; break;
+    }
+    switch (currentOrderData.services.urgency) {
+      case "standard": return basePrice;
+      case "expedited": return basePrice * 1.5;
+      case "rush": return basePrice * 2;
+      default: return basePrice;
+    }
+  };
+  // --- End Calculate Price Function ---
 
   const handleNext = async () => { // Make async
     setError(null); // Clear previous errors
@@ -132,12 +165,121 @@ const OrderWizard = ({
     } else if (currentStep < totalSteps - 1) {
       // Logic for other steps (just move forward)
       setCurrentStep(currentStep + 1);
+    } else if (currentStep === totalSteps - 1 && stripe && elements) {
+      // --- Final Step: Payment Processing ---
+      setPaymentProcessing(true);
+      setError(null);
+
+      const cardElement = elements.getElement(CardElement);
+      if (!cardElement) {
+        setError("Card details not found. Please try again.");
+        setPaymentProcessing(false);
+        return;
+      }
+
+      try {
+        // --- 1. Create PaymentIntent on Backend ---
+        // TODO: Replace with actual call to your backend endpoint
+        // This endpoint should take the order amount (calculate it based on orderData)
+        // and return the client_secret of the created PaymentIntent.
+        const functionUrl = "https://lholxkbtosixszauuzmb.supabase.co/functions/v1/create-payment-intent";
+        const calculatedAmount = Math.round(calculatePrice(orderData) * 100); // Calculate amount in cents
+
+        console.log(`Calling Supabase function at ${functionUrl} for order ${orderId} with amount ${calculatedAmount}`);
+
+        const response = await fetch(functionUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            // Add Supabase Anon Key - required for invoking functions unless you change settings
+            // Get this from your Supabase project settings (API > Project API keys > anon public)
+            // Ideally, load this from environment variables (.env file)
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY, // Assumes you have this in your .env
+            // If user is logged in, you might want to pass the Authorization header
+            // 'Authorization': `Bearer ${supabase.auth.session()?.access_token}`, // Uncomment if needed
+          },
+          body: JSON.stringify({
+            amount: calculatedAmount,
+            orderId: orderId
+          }),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.json().catch(() => ({ error: 'Failed to parse error response' }));
+            console.error("Backend error response:", errorBody);
+            throw new Error(errorBody.error || `Function invocation failed with status ${response.status}`);
+        }
+
+        const { clientSecret, error: backendError } = await response.json();
+
+        if (backendError || !clientSecret) {
+          console.error("Backend returned error or no clientSecret:", backendError);
+          throw new Error(backendError || 'Failed to get payment secret from backend.');
+        }
+
+        console.log("Received clientSecret from backend.");
+
+
+        // --- 2. Confirm Card Payment ---
+        const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
+          clientSecret,
+          {
+            payment_method: {
+              card: cardElement,
+              billing_details: {
+                name: `${orderData.customerInfo.firstName} ${orderData.customerInfo.lastName}`,
+                email: orderData.customerInfo.email,
+                // Add address details if collected
+              },
+            },
+          }
+        );
+
+        if (stripeError) {
+          // Show error to your customer (e.g., insufficient funds, card declined)
+          console.error("Stripe confirmation error:", stripeError);
+          setError(stripeError.message || "Payment failed. Please try again.");
+          setPaymentProcessing(false);
+          return;
+        }
+
+        // --- 3. Payment Successful ---
+        if (paymentIntent?.status === "succeeded") {
+          console.log("Payment Succeeded:", paymentIntent);
+
+          // NOTE: Order status update (to 'paid') should ideally be handled
+          // by a backend webhook listening to Stripe's 'payment_intent.succeeded' event.
+          // The 'create-payment-intent' function now sets it to 'pending_payment'.
+          // For now, we assume success and redirect.
+
+          setPaymentProcessing(false); // Stop processing indicator
+
+          // Call the completion callback
+          onComplete({ ...orderData, orderId, paymentIntentId: paymentIntent.id });
+          // Redirect to success page immediately after frontend confirmation
+          navigate(`/order-success?orderId=${orderId}`);
+
+        } else {
+          // Handle other PaymentIntent statuses (e.g., requires_action)
+          console.warn("PaymentIntent status:", paymentIntent?.status);
+          setError("Payment processing. Please wait or contact support.");
+          setPaymentProcessing(false); // Keep user on payment page for now
+        }
+
+      } catch (err: any) {
+        console.error("Payment processing error:", err);
+        setError(err.message || "An unexpected error occurred during payment.");
+        setPaymentProcessing(false);
+      }
     } else {
-      // Final step completion (potentially update the order with remaining data)
-      // For now, just call onComplete
-      // TODO: Add logic here to update the existing order record using orderId
-      console.log("Completing order with ID:", orderId);
-      onComplete({ ...orderData, orderId });
+       // Handle cases where stripe or elements aren't loaded yet, or not on the final step
+       if (currentStep === totalSteps - 1) {
+           setError("Stripe is not ready. Please wait a moment and try again.");
+       } else {
+           // Should not happen if logic is correct, but good to have a fallback
+           console.error("Unexpected state in handleNext:", { currentStep, stripe, elements });
+           setError("An unexpected error occurred.");
+       }
     }
   };
 
@@ -214,11 +356,15 @@ const OrderWizard = ({
               {currentStep === 1 && (
                 <DocumentUploadStep
                   documents={orderData.documents}
-                  updateDocuments={(docs) =>
-                    setOrderData({ ...orderData, documents: docs })
-                   }
-                   orderId={orderId} // Pass orderId down
-                 />
+                  // Use functional update form for setOrderData
+                  updateDocuments={(updater) =>
+                    setOrderData(prevData => ({
+                      ...prevData,
+                      documents: typeof updater === 'function' ? updater(prevData.documents) : updater
+                    }))
+                  }
+                  orderId={orderId} // Pass orderId down
+                />
                )}
 
               {currentStep === 2 && (
@@ -231,10 +377,7 @@ const OrderWizard = ({
               {currentStep === 3 && <ReviewStep orderData={orderData} />}
 
               {currentStep === 4 && (
-                <PaymentStep
-                  data={orderData.payment}
-                  updateData={(data) => updateOrderData("payment", data)}
-                />
+                <PaymentStep error={error} /> // Pass error state down
               )}
             </motion.div>
           </AnimatePresence>
@@ -252,6 +395,11 @@ const OrderWizard = ({
           <Button onClick={handleNext} disabled={isSubmitting && currentStep === 0}>
             {isSubmitting && currentStep === 0 ? "Saving..." : currentStep === totalSteps - 1 ? "Complete Order" : "Next"}
             {!(isSubmitting && currentStep === 0) && currentStep !== totalSteps - 1 && (
+              <ArrowRight className="ml-2 h-4 w-4" />
+            )}
+            {/* Update button text and disable state for payment step */}
+            {paymentProcessing ? "Processing Payment..." : currentStep === totalSteps - 1 ? "Complete Order" : "Next"}
+            {!(isSubmitting && currentStep === 0) && !paymentProcessing && currentStep !== totalSteps - 1 && (
               <ArrowRight className="ml-2 h-4 w-4" />
             )}
           </Button>
@@ -319,17 +467,9 @@ const CustomerInfoStep = ({ data, updateData, error }: CustomerInfoStepProps) =>
 
 // --- Update DocumentUploadStep ---
 interface DocumentUploadStepProps {
-  documents: { // Use the detailed document type
-    name: string;
-    size: number;
-    type: string;
-    file: File;
-    status: 'pending' | 'uploading' | 'success' | 'error';
-    error?: string;
-    path?: string;
-    progress?: number;
-  }[];
-  updateDocuments: (documents: DocumentUploadStepProps['documents']) => void;
+  documents: DocumentState[]; // Use the defined type
+  // Allow passing either the new array or an updater function
+  updateDocuments: (updater: DocumentState[] | ((prevDocs: DocumentState[]) => DocumentState[])) => void;
   orderId: string | null; // Add orderId prop
 }
 
@@ -342,28 +482,37 @@ const DocumentUploadStep = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Function to update a specific document's state
-  const updateDocumentStatus = (index: number, newStatus: Partial<DocumentUploadStepProps['documents'][0]>) => {
-    const updatedDocs = [...documents];
-    // Ensure the index is valid before attempting to update
-    if (updatedDocs[index]) {
-        updatedDocs[index] = { ...updatedDocs[index], ...newStatus };
-        updateDocuments(updatedDocs);
-    } else {
-        console.error("Attempted to update status for invalid index:", index);
-    }
+  // Function to update a specific document's state using its unique ID (using functional update)
+  const updateDocumentStatusById = (id: string, newStatus: Partial<DocumentState>) => {
+    updateDocuments(prevDocs => {
+      const docIndex = prevDocs.findIndex(doc => doc.id === id);
+      if (docIndex !== -1) {
+        const updatedDocs = [...prevDocs]; // Create a new array from the previous state
+        updatedDocs[docIndex] = { ...updatedDocs[docIndex], ...newStatus };
+        return updatedDocs; // Return the new array
+      } else {
+        console.error("[updateDocumentStatusById] Attempted to update status for a document ID not found in state:", id);
+        return prevDocs; // Return the previous state if ID not found
+      }
+    });
   };
 
-  // Function to upload a single file
-  const uploadFile = async (file: File, index: number) => {
+  // Function to upload a single file (now uses file reference and unique ID)
+  const uploadFile = async (file: File, id: string) => { // Added id parameter
     if (!orderId) {
       console.error("Order ID is missing, cannot upload file.");
-      updateDocumentStatus(index, { status: 'error', error: 'Order ID missing.' });
+      updateDocumentStatusById(id, { status: 'error', error: 'Order ID missing.' }); // Use ID
       return;
     }
 
     try {
-      updateDocumentStatus(index, { status: 'uploading', progress: 0 });
-      const filePath = `public/${orderId}/${Date.now()}_${file.name}`; // Unique path within order folder
+      updateDocumentStatusById(id, { status: 'uploading', progress: 0 }); // Use ID
+
+      // Sanitize filename: replace spaces and special chars with underscores
+      const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const filePath = `${orderId}/${Date.now()}_${sanitizedName}`; // Use sanitized name
+
+      console.log(`Uploading sanitized file: ${filePath}`);
 
       const { data, error } = await supabase.storage
         .from('documents') // Use the bucket name
@@ -378,45 +527,62 @@ const DocumentUploadStep = ({
       }
 
       console.log('Upload successful:', data);
-      const newPath = data.path;
-      updateDocumentStatus(index, { status: 'success', path: newPath, progress: 100 });
+      const newPath = data.path; // data.path is the key/path within the bucket
+      // File uploaded successfully to storage, update UI immediately
+      updateDocumentStatusById(id, { status: 'success', path: newPath, progress: 100 }); // Use ID
 
-      // --- Update document_paths in the orders table ---
+      // --- Call backend function to update document_paths in the orders table ---
       try {
-        // 1. Fetch current paths
-        const { data: orderData, error: fetchError } = await supabase
-          .from('orders')
-          .select('document_paths')
-          .eq('id', orderId)
-          .single();
+        // Add an explicit check for orderId right before the fetch call
+        if (!orderId) {
+            console.error("Order ID is missing immediately before calling backend function.");
+            throw new Error("Cannot link document: Order ID is missing.");
+        }
 
-        if (fetchError) throw fetchError;
+        // Add detailed logging for type and value
+        console.log(`[Debug] Calling backend function. Order ID Type: ${typeof orderId}, Value: ${orderId}`);
 
-        // 2. Append new path (handle null or existing array)
-        const currentPaths = orderData?.document_paths || [];
-        const updatedPaths = [...currentPaths, newPath];
+        console.log(`Calling backend function to add document path for order ${orderId}`);
+        const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-order-documents`; // Get Supabase URL from env
 
-        // 3. Update the order record
-        const { error: updateError } = await supabase
-          .from('orders')
-          .update({ document_paths: updatedPaths })
-          .eq('id', orderId);
+        const response = await fetch(functionUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY, // Use anon key
+                // Add Authorization header if users must be logged in to upload
+                // 'Authorization': `Bearer ${supabase.auth.session()?.access_token}`,
+            },
+            body: JSON.stringify({
+                orderId: String(orderId), // Convert orderId to string before sending
+                documentPath: newPath // Send the path returned by storage upload
+            }),
+        });
 
-        if (updateError) throw updateError;
+        if (!response.ok) {
+            const errorBody = await response.json().catch(() => ({ error: 'Failed to parse error response from function' }));
+            console.error(`Backend function error updating document_paths for order ${orderId}:`, errorBody);
+            throw new Error(errorBody.error || `Function call failed with status ${response.status}`);
+        }
 
-        console.log('Order document_paths updated successfully.');
+        const result = await response.json();
+        console.log(`Backend function successfully updated document_paths for order ${orderId}:`, result);
 
-      } catch (dbError: any) {
-          console.error('Error updating order document_paths:', dbError);
-          // Optionally revert status or show specific DB error to user
-          // For now, the file is uploaded, but the DB link failed.
-          updateDocumentStatus(index, { status: 'error', error: `Upload succeeded, but DB update failed: ${dbError.message}` });
+      } catch (functionError: any) {
+          console.error('Error calling update-order-documents function:', functionError);
+          // Update the specific document's status to show the function call error
+          // Keep status 'success' for upload, but add a warning/error about the DB link
+          updateDocumentStatusById(id, { // Use ID
+              status: 'error', // Or keep 'success' but show a warning icon/message
+              error: `Upload OK, but failed to link to order: ${functionError.message}`
+          });
+          // Decide if you want to stop or allow proceeding. For now, we let it proceed but show error.
       }
-      // --- End update document_paths ---
+      // --- End call backend function ---
 
-    } catch (error: any) {
-      console.error('Error uploading file:', file.name, error);
-      updateDocumentStatus(index, { status: 'error', error: error.message || 'Upload failed', progress: undefined });
+    } catch (uploadError: any) {
+      console.error('Error uploading file to storage:', file.name, uploadError);
+      updateDocumentStatusById(id, { status: 'error', error: uploadError.message || 'Upload failed', progress: undefined }); // Use ID
     }
   };
 
@@ -427,45 +593,66 @@ const DocumentUploadStep = ({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (e.dataTransfer.files) {
-      const mappedFiles = Array.from(e.dataTransfer.files).map((file) => ({ // Rename newFiles to mappedFiles
+      const filesToAdd: DocumentState[] = Array.from(e.dataTransfer.files).map((file) => ({
+        id: crypto.randomUUID(), // Generate unique ID
         name: file.name,
         size: file.size,
         type: file.type,
         file,
-        status: 'pending' as const, // Add initial status
+        status: 'pending' as const,
       }));
-      const currentDocCount = documents.length;
-      updateDocuments([...documents, ...mappedFiles]);
-      // Trigger upload for each new file
-      mappedFiles.forEach((_, i) => {
-        uploadFile(mappedFiles[i].file, currentDocCount + i);
-      });
+      // Add new files to state using functional update
+      const filesToUpload = filesToAdd.map(f => ({ file: f.file, id: f.id })); // Keep track of file and ID
+      updateDocuments(prevDocs => [...prevDocs, ...filesToAdd]);
+
+      // Trigger upload for each new file *after* state update likely processed
+      // Use a minimal timeout to allow React to batch the state update
+      setTimeout(() => {
+          filesToUpload.forEach(({ file, id }) => { // Pass file and ID
+              uploadFile(file, id);
+          });
+      }, 0);
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log("handleFileChange triggered"); // Add log here
+    console.log("handleFileChange triggered");
     if (e.target.files) {
-      const mappedFiles = Array.from(e.target.files).map((file) => ({ // Rename newFiles to mappedFiles
+       const filesToAdd: DocumentState[] = Array.from(e.target.files).map((file) => ({
+        id: crypto.randomUUID(), // Generate unique ID
         name: file.name,
         size: file.size,
         type: file.type,
         file,
-        status: 'pending' as const, // Add initial status
+        status: 'pending' as const,
       }));
-      const currentDocCount = documents.length;
-      updateDocuments([...documents, ...mappedFiles]);
-      // Trigger upload for each new file
-      mappedFiles.forEach((_, i) => {
-        uploadFile(mappedFiles[i].file, currentDocCount + i);
-      });
+      // Add new files to state using functional update
+      const filesToUpload = filesToAdd.map(f => ({ file: f.file, id: f.id })); // Keep track of file and ID
+      updateDocuments(prevDocs => [...prevDocs, ...filesToAdd]);
+
+      // Trigger upload for each new file *after* state update likely processed
+      // Use a minimal timeout to allow React to batch the state update
+      setTimeout(() => {
+          filesToUpload.forEach(({ file, id }) => { // Pass file and ID
+              uploadFile(file, id);
+          });
+      }, 0);
     }
   };
 
-  const removeDocument = (index: number) => {
-    const newDocs = [...documents];
-    newDocs.splice(index, 1);
-    updateDocuments(newDocs);
+  // Use functional update for removing documents
+  const removeDocument = (id: string) => { // Accept ID instead of index
+    updateDocuments(prevDocs => {
+      const docIndex = prevDocs.findIndex(doc => doc.id === id);
+      if (docIndex !== -1) {
+        const newDocs = [...prevDocs];
+        newDocs.splice(docIndex, 1);
+        return newDocs; // Return the new array
+      } else {
+        console.error("[removeDocument] Attempted to remove document with ID not found:", id);
+        return prevDocs; // Return previous state if not found
+      }
+    });
   };
 
   return (
@@ -513,9 +700,9 @@ const DocumentUploadStep = ({
         <div className="space-y-2">
           <h3 className="font-medium">Uploaded Documents</h3>
           <div className="space-y-2">
-            {documents.map((doc, index) => (
+            {documents.map((doc) => ( // Removed index from map parameters
               <div
-                key={index}
+                key={doc.id} // Use unique ID as key
                 className="flex items-center justify-between p-3 bg-muted rounded-md"
               >
                 <div className="flex items-center flex-grow mr-4 overflow-hidden"> {/* Added flex-grow and overflow */}
@@ -544,7 +731,7 @@ const DocumentUploadStep = ({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => removeDocument(index)}
+                  onClick={() => removeDocument(doc.id)} // Pass ID to removeDocument
                   disabled={doc.status === 'uploading'} // Disable remove during upload
                 >
                   Remove
@@ -715,33 +902,31 @@ const ReviewStep = ({ orderData }: ReviewStepProps) => {
     }
   };
 
-  // Calculate estimated price based on service type and urgency
-  const calculatePrice = () => {
-    let basePrice = 0;
+  // Calculate estimated price based on service type and urgency - MOVED TO OrderWizard scope
+  // const calculatePrice = () => { ... }; // Function logic is now outside this component
 
-    switch (orderData.services.type) {
-      case "translation":
-        basePrice = 75;
-        break;
-      case "evaluation":
-        basePrice = 150;
-        break;
-      case "both":
-        basePrice = 200;
-        break;
-    }
+  // Need access to the calculatePrice function from the parent scope
+  // This component should receive the calculated price as a prop, or the function itself.
+  // For simplicity, let's assume the parent passes the calculated price.
+  // We'll need to adjust the parent component (`OrderWizard`) to pass this.
+  // OR, we can just call the function directly if it's in scope (which it isn't here).
+  // Let's revert ReviewStep to calculate its own price for now, as it was originally.
 
-    switch (orderData.services.urgency) {
-      case "standard":
-        return basePrice;
-      case "expedited":
-        return basePrice * 1.5;
-      case "rush":
-        return basePrice * 2;
-      default:
-        return basePrice;
-    }
-  };
+  const calculateReviewPrice = () => {
+      let basePrice = 0;
+      switch (orderData.services.type) {
+        case "translation": basePrice = 75; break;
+        case "evaluation": basePrice = 150; break;
+        case "both": basePrice = 200; break;
+      }
+      switch (orderData.services.urgency) {
+        case "standard": return basePrice;
+        case "expedited": return basePrice * 1.5;
+        case "rush": return basePrice * 2;
+        default: return basePrice;
+      }
+    };
+
 
   return (
     <div className="space-y-6">
@@ -803,7 +988,7 @@ const ReviewStep = ({ orderData }: ReviewStepProps) => {
         <div className="border-t pt-4">
           <div className="flex justify-between">
             <span className="font-medium">Estimated Total:</span>
-            <span className="font-bold">${calculatePrice().toFixed(2)}</span>
+            <span className="font-bold">${calculateReviewPrice().toFixed(2)}</span> {/* Use the local function */}
           </div>
           <p className="text-xs text-muted-foreground mt-1">
             Final price may vary based on document complexity and additional
@@ -816,11 +1001,31 @@ const ReviewStep = ({ orderData }: ReviewStepProps) => {
 };
 
 interface PaymentStepProps {
-  data: any;
-  updateData: (data: any) => void;
+  error: string | null; // Add error prop to display payment errors
 }
 
-const PaymentStep = ({ data, updateData }: PaymentStepProps) => {
+// --- Updated PaymentStep Component ---
+const PaymentStep = ({ error }: PaymentStepProps) => { // Added error prop
+  const cardElementOptions = {
+    style: {
+      base: {
+        color: "#32325d",
+        fontFamily: '"Helvetica Neue", Helvetica, sans-serif',
+        fontSmoothing: "antialiased",
+        fontSize: "16px",
+        "::placeholder": {
+          color: "#aab7c4",
+        },
+      },
+      invalid: {
+        color: "#fa755a",
+        iconColor: "#fa755a",
+      },
+    },
+    // Hiding postal code for simplicity, but recommended for production
+    hidePostalCode: true,
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -830,191 +1035,28 @@ const PaymentStep = ({ data, updateData }: PaymentStepProps) => {
         </p>
       </div>
 
+      {/* Payment Method Selection (Optional - Keep if needed) */}
+      {/* For this example, we'll assume Credit Card is the only method for Stripe */}
+      {/*
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div
-          className={`border rounded-lg p-4 cursor-pointer hover:border-primary transition-colors ${data.method === "credit-card" ? "border-primary bg-primary/5" : ""}`}
-          onClick={() => updateData({ method: "credit-card" })}
-        >
-          <div className="flex flex-col items-center justify-center h-full">
-            <CreditCard className="h-8 w-8 mb-2" />
-            <span className="font-medium">Credit Card</span>
-          </div>
-        </div>
-        <div
-          className={`border rounded-lg p-4 cursor-pointer hover:border-primary transition-colors ${data.method === "paypal" ? "border-primary bg-primary/5" : ""}`}
-          onClick={() => updateData({ method: "paypal" })}
-        >
-          <div className="flex flex-col items-center justify-center h-full">
-            <svg
-              className="h-8 w-8 mb-2"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M19.5 8.25H4.5C3.67157 8.25 3 8.92157 3 9.75V18.75C3 19.5784 3.67157 20.25 4.5 20.25H19.5C20.3284 20.25 21 19.5784 21 18.75V9.75C21 8.92157 20.3284 8.25 19.5 8.25Z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M7.5 15.75C7.5 15.75 8.25 15 9.75 15C11.25 15 12.75 16.5 14.25 16.5C15.75 16.5 16.5 15.75 16.5 15.75"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M16.5 8.25V6C16.5 4.34315 15.1569 3 13.5 3H6C4.34315 3 3 4.34315 3 6V8.25"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="font-medium">PayPal</span>
-          </div>
-        </div>
-        <div
-          className={`border rounded-lg p-4 cursor-pointer hover:border-primary transition-colors ${data.method === "bank-transfer" ? "border-primary bg-primary/5" : ""}`}
-          onClick={() => updateData({ method: "bank-transfer" })}
-        >
-          <div className="flex flex-col items-center justify-center h-full">
-            <svg
-              className="h-8 w-8 mb-2"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M3 21H21"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M3 18H21"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M5 18V13"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M19 18V13"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M9 18V13"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M15 18V13"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M12 3L21 10H3L12 3Z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="font-medium">Bank Transfer</span>
-          </div>
+         ... payment method selection ...
+      </div>
+      */}
+
+      {/* --- Stripe Card Element --- */}
+      <div className="space-y-4 mt-4">
+        <Label htmlFor="card-element">Credit or debit card</Label>
+        <div className="p-3 border rounded-md bg-white"> {/* Style wrapper */}
+          <CardElement id="card-element" options={cardElementOptions} />
         </div>
       </div>
+      {/* --- End Stripe Card Element --- */}
 
-      {data.method === "credit-card" && (
-        <div className="space-y-4 mt-4">
-          <div className="space-y-2">
-            <Label htmlFor="card-number">Card Number</Label>
-            <Input
-              id="card-number"
-              placeholder="1234 5678 9012 3456"
-              value={data.cardNumber}
-              onChange={(e) => updateData({ cardNumber: e.target.value })}
-            />
-          </div>
+      {/* Display Payment Error */}
+      {error && <p className="text-red-500 text-sm mt-4">{error}</p>}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="expiry-date">Expiry Date</Label>
-              <Input
-                id="expiry-date"
-                placeholder="MM/YY"
-                value={data.expiryDate}
-                onChange={(e) => updateData({ expiryDate: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cvv">CVV</Label>
-              <Input
-                id="cvv"
-                placeholder="123"
-                value={data.cvv}
-                onChange={(e) => updateData({ cvv: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="name-on-card">Name on Card</Label>
-            <Input
-              id="name-on-card"
-              placeholder="John Doe"
-              value={data.nameOnCard}
-              onChange={(e) => updateData({ nameOnCard: e.target.value })}
-            />
-          </div>
-        </div>
-      )}
-
-      {data.method === "paypal" && (
-        <div className="bg-muted p-4 rounded-lg mt-4 text-center">
-          <p className="text-sm">
-            You will be redirected to PayPal to complete your payment after
-            submitting your order.
-          </p>
-        </div>
-      )}
-
-      {data.method === "bank-transfer" && (
-        <div className="bg-muted p-4 rounded-lg mt-4 space-y-2">
-          <p className="text-sm">
-            Please use the following details to make your bank transfer:
-          </p>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <span className="font-medium">Bank Name:</span>
-            <span>CreditEval Bank</span>
-            <span className="font-medium">Account Name:</span>
-            <span>CreditEval Services Inc.</span>
-            <span className="font-medium">Account Number:</span>
-            <span>1234567890</span>
-            <span className="font-medium">Routing Number:</span>
-            <span>987654321</span>
-            <span className="font-medium">Reference:</span>
-            <span>Your order number will be provided after submission</span>
-          </div>
-        </div>
-      )}
+      {/* Placeholder for other payment methods if needed */}
+      {/* e.g., PayPal button or Bank Transfer info */}
 
       <div className="flex items-start space-x-2 mt-6">
         <Checkbox id="terms" />
@@ -1034,7 +1076,7 @@ const PaymentStep = ({ data, updateData }: PaymentStepProps) => {
           </p>
         </div>
       </div>
-    </div>
+    </div> // Closing div for the main PaymentStep component
   );
 };
 
