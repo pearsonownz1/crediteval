@@ -507,7 +507,7 @@ const DocumentUploadStep = ({
       <p className="text-xs text-muted-foreground mt-4">
         Supported formats: PDF, JPG, PNG, DOCX (Max 10MB per file)
       </p>
-    </div> // This closes the main dropzone div correctly
+    </div> {/* This closes the main dropzone div correctly */}
 
     {documents.length > 0 && (
         <div className="space-y-2">
