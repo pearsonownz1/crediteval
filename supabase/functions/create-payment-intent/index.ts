@@ -53,12 +53,26 @@ serve(async (req) => {
         console.error("Amount validation failed:", amount);
         throw new Error("Invalid or missing amount provided (must be at least 50 cents).");
     }
-    if (!orderId || typeof orderId !== 'string') { // Require orderId for DB update
-        console.error("orderId validation failed:", orderId);
-        throw new Error("Invalid or missing orderId provided.");
+
+    // --- Relaxed orderId check and potential conversion ---
+    if (!orderId) {
+        console.error("orderId validation failed: Missing orderId");
+        throw new Error("Missing orderId provided.");
     }
 
-    console.log(`Validation passed. Processing request for order ${orderId} with amount ${amount}`);
+    let orderIdString: string;
+    if (typeof orderId === 'number') {
+        console.log("Received orderId as number, converting to string.");
+        orderIdString = String(orderId);
+    } else if (typeof orderId === 'string') {
+        orderIdString = orderId;
+    } else {
+        console.error(`orderId validation failed: Invalid type - ${typeof orderId}`);
+        throw new Error(`Invalid orderId type provided: ${typeof orderId}`);
+    }
+    // --- End relaxed check ---
+
+    console.log(`Validation passed. Processing request for order ${orderIdString} with amount ${amount}`);
 
     // Create a PaymentIntent
     const paymentIntent = await stripe.paymentIntents.create({
@@ -69,11 +83,11 @@ serve(async (req) => {
       },
       // Optionally add metadata like order_id
       metadata: {
-        order_id: orderId || 'N/A',
+        order_id: orderIdString, // Use converted string
       },
     });
 
-    console.log(`PaymentIntent ${paymentIntent.id} created for order ${orderId}.`);
+    console.log(`PaymentIntent ${paymentIntent.id} created for order ${orderIdString}.`);
 
     // --- Update Order Status using Service Role ---
     // This happens *before* returning the client secret. If this fails,
@@ -86,19 +100,19 @@ serve(async (req) => {
           status: 'pending_payment', // Indicate payment initiated
           stripe_payment_intent_id: paymentIntent.id,
         })
-        .eq('id', orderId)
+        .eq('id', orderIdString) // Use converted string
         .select('id') // Select something to confirm update
         .single(); // Ensure it targets one row
 
       if (updateError) {
         // Log the error but don't fail the request, as payment can still proceed
-        console.error(`Failed to update order ${orderId} status after PI creation:`, updateError);
+        console.error(`Failed to update order ${orderIdString} status after PI creation:`, updateError);
         // Consider adding specific logging or monitoring here
       } else {
-        console.log(`Order ${orderId} status updated to 'pending_payment' and PI ID stored.`);
+        console.log(`Order ${orderIdString} status updated to 'pending_payment' and PI ID stored.`);
       }
     } catch (dbError) {
-      console.error(`Database exception updating order ${orderId} status:`, dbError);
+      console.error(`Database exception updating order ${orderIdString} status:`, dbError);
     }
     // --- End Update Order Status ---
 
