@@ -83,7 +83,8 @@ const OrderWizard = ({
     documents: [] as DocumentState[], // Use the defined type
     services: {
       type: "translation", // 'translation', 'evaluation', 'expert'
-      language: "spanish", // For translation
+      languageFrom: "spanish", // NEW: For translation
+      languageTo: "english", // NEW: For translation
       pageCount: 1, // For translation
       evaluationType: "document", // 'document', 'course' - For evaluation
       visaType: "", // For expert opinion letter
@@ -814,22 +815,49 @@ const ServiceSelectionStep = ({
       {/* Fields for Translation */}
       {data.type === "translation" && (
         <>
+          {/* Language From Dropdown */}
           <div className="space-y-2">
-            <Label htmlFor="language">Target Language</Label>
+            <Label htmlFor="language-from">Language From</Label>
             <Select
-              value={data.language}
-              onValueChange={(value) => updateData({ language: value })}
+              value={data.languageFrom}
+              onValueChange={(value) => updateData({ languageFrom: value })}
             >
-              <SelectTrigger id="language">
-                <SelectValue placeholder="Select language" />
+              <SelectTrigger id="language-from">
+                <SelectValue placeholder="Select original language" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="english">English</SelectItem>
+                {/* Add common source languages */}
                 <SelectItem value="spanish">Spanish</SelectItem>
                 <SelectItem value="french">French</SelectItem>
                 <SelectItem value="german">German</SelectItem>
                 <SelectItem value="chinese">Chinese</SelectItem>
                 <SelectItem value="arabic">Arabic</SelectItem>
+                <SelectItem value="portuguese">Portuguese</SelectItem>
+                <SelectItem value="russian">Russian</SelectItem>
+                <SelectItem value="japanese">Japanese</SelectItem>
+                <SelectItem value="english">English</SelectItem>
+                {/* Add other languages as needed */}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Language To Dropdown */}
+          <div className="space-y-2">
+            <Label htmlFor="language-to">Language To</Label>
+            <Select
+              value={data.languageTo}
+              onValueChange={(value) => updateData({ languageTo: value })}
+            >
+              <SelectTrigger id="language-to">
+                <SelectValue placeholder="Select target language" />
+              </SelectTrigger>
+              <SelectContent>
+                {/* Add common target languages */}
+                <SelectItem value="english">English</SelectItem>
+                <SelectItem value="spanish">Spanish</SelectItem>
+                <SelectItem value="french">French</SelectItem>
+                <SelectItem value="german">German</SelectItem>
+                {/* Add other languages as needed */}
                 {/* Add other languages as needed */}
               </SelectContent>
             </Select>
@@ -1073,7 +1101,8 @@ const ReviewStep = ({ orderData }: ReviewStepProps) => {
             {/* Conditional details based on service type */}
             {orderData.services.type === "translation" && (
               <>
-                <p className="text-sm">Target Language: {orderData.services.language}</p>
+                <p className="text-sm">Language From: {orderData.services.languageFrom}</p>
+                <p className="text-sm">Language To: {orderData.services.languageTo}</p>
                 <p className="text-sm">Pages for Translation: {orderData.services.pageCount || 1}</p>
               </>
             )}
