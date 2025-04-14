@@ -34,7 +34,7 @@ const Login: React.FC = () => {
       // You might want to use react-router-dom's useNavigate hook here
       // after integrating this component into your routing setup.
       console.log('Login successful');
-      navigate('/dashboard'); // Redirect to dashboard
+      navigate('/admin'); // Redirect to admin dashboard
 
     } catch (error: any) {
       console.error('Error logging in:', error);

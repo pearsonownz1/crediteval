@@ -63,21 +63,48 @@ const QuotePage = () => {
     });
   };
 
-  // Basic upload function placeholder - needs implementation if storage is required
+  // Actual Supabase Storage upload function
   const uploadFile = async (file: File, id: string) => {
     updateDocumentStatusById(id, { status: 'uploading', progress: 0 });
-    console.log(`Simulating upload for: ${file.name}`);
-    // Simulate upload delay and success/error
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    const success = Math.random() > 0.2; // Simulate 80% success rate
-    if (success) {
-      // In a real scenario, get the path from Supabase storage response
-      const simulatedPath = `quotes/${id}/${file.name}`;
-      updateDocumentStatusById(id, { status: 'success', path: simulatedPath, progress: 100 });
-      console.log(`Simulated upload success for ${file.name}, path: ${simulatedPath}`);
-    } else {
-      updateDocumentStatusById(id, { status: 'error', error: 'Simulated upload failed', progress: undefined });
-      console.error(`Simulated upload error for ${file.name}`);
+
+    // Sanitize the filename for the storage path
+    const sanitizedFilename = file.name
+      .replace(/\s+/g, '_') // Replace spaces with underscores
+      .replace(/[^a-zA-Z0-9._-]/g, ''); // Remove disallowed characters (allow alphanumeric, dot, underscore, hyphen)
+
+    const filePath = `quotes/${id}/${sanitizedFilename}`; // Use sanitized filename
+
+    try {
+      const { data, error } = await supabase.storage
+        .from('documents') // Use the existing 'documents' bucket
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true, // Overwrite if file with same name exists for this quote ID
+        });
+
+      if (error) {
+        console.error(`Upload error for ${file.name}:`, error);
+        // Provide a more detailed error message, stringify if message is not available
+        const errorMessage = typeof error === 'object' && error !== null && 'message' in error ? String(error.message) : JSON.stringify(error);
+        updateDocumentStatusById(id, { status: 'error', error: errorMessage, progress: undefined });
+        return; // Stop execution on error
+      }
+
+      if (data) {
+        // Use the actual path returned by Supabase
+        updateDocumentStatusById(id, { status: 'success', path: data.path, progress: 100 });
+        console.log(`Upload success for ${file.name}, path: ${data.path}`);
+      } else {
+         // Handle unexpected case where data is null without error
+         console.error(`Upload completed for ${file.name} but no data returned.`);
+         updateDocumentStatusById(id, { status: 'error', error: 'Upload completed but no path returned.', progress: undefined });
+      }
+
+    } catch (err: any) {
+      console.error(`Unexpected error during upload for ${file.name}:`, err);
+       // Provide a more detailed error message, stringify if message is not available
+      const errorMessage = typeof err === 'object' && err !== null && 'message' in err ? String(err.message) : JSON.stringify(err);
+      updateDocumentStatusById(id, { status: 'error', error: errorMessage || 'An unknown error occurred during upload.', progress: undefined });
     }
   };
 
@@ -132,9 +159,30 @@ const QuotePage = () => {
     }
   };
 
-  const removeDocument = (id: string) => {
-    // TODO: Add logic to delete from storage if already uploaded
+  const removeDocument = async (id: string) => {
+    const docToRemove = documents.find(doc => doc.id === id);
+
+    // Remove from state immediately for responsiveness
     setDocuments(prevDocs => prevDocs.filter(doc => doc.id !== id));
+
+    // If the file was successfully uploaded, attempt to delete from storage
+    if (docToRemove && docToRemove.status === 'success' && docToRemove.path) {
+      console.log(`Attempting to delete ${docToRemove.path} from storage...`);
+      try {
+        const { error } = await supabase.storage
+          .from('documents') // Use the existing 'documents' bucket
+          .remove([docToRemove.path]);
+
+        if (error) {
+          console.error(`Failed to delete ${docToRemove.path} from storage:`, error);
+          // Optional: Add user feedback about failed deletion?
+        } else {
+          console.log(`Successfully deleted ${docToRemove.path} from storage.`);
+        }
+      } catch (err) {
+         console.error(`Unexpected error deleting ${docToRemove.path} from storage:`, err);
+      }
+    }
   };
 
   // --- End File Handling ---
@@ -179,18 +227,29 @@ const QuotePage = () => {
     console.log("Submitting Quote Request:", quoteRequestData);
 
     // --- TODO: Replace with actual submission logic ---
-    // Example: Send data to a Supabase table or function
+    // --- Invoke Supabase Function ---
     try {
-        // const { data, error } = await supabase.from('quote_requests').insert([quoteRequestData]);
-        // if (error) throw error;
+      const { data, error } = await supabase.functions.invoke("send-quote-request", {
+        body: quoteRequestData,
+      });
 
-        // Simulate API call delay
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        console.log("Quote request submitted successfully (simulated).");
-        setSubmitStatus('success');
+      if (error) {
+        // Handle specific function invocation errors
+        console.error("Supabase function invocation error:", error);
+        throw new Error(`Function error: ${error.message}`);
+      }
+
+      // Check for errors returned *within* the function's response body
+      if (data?.error) {
+         console.error("Error from send-quote-request function:", data.error);
+         throw new Error(data.error);
+      }
+
+      console.log("Quote request submitted and function invoked successfully:", data);
+      setSubmitStatus('success');
 
     } catch (error: any) {
-        console.error("Error submitting quote request:", error);
+      console.error("Error submitting quote request:", error);
         setSubmitError(error.message || "Failed to submit quote request.");
         setSubmitStatus('error');
     } finally {

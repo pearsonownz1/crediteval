@@ -2,11 +2,12 @@
 
 // Define allowed origins
 const allowedOrigins = [
-  'https://crediteval.vercel.app', // Original Production frontend
-  'https://crediteval-egbwb2d73-guy-gcsorgs-projects.vercel.app', // Previous Vercel deployment
-  'https://crediteval-h3k27shge-guy-gcsorgs-projects.vercel.app', // Current Vercel deployment causing CORS error
-  'http://localhost:5174',       // Local development frontend
-  // Add other Vercel preview URLs if needed, or use a wildcard/regex if appropriate (more complex)
+  'https://www.crediteval.com', // New Production frontend (www)
+  'https://crediteval.com',     // New Production frontend (root)
+  'http://localhost:5173',      // Default local dev port
+  'http://localhost:5174',      // Possible local dev port
+  'http://localhost:5175',      // Current local dev port
+  // Add specific Vercel preview URLs if needed for testing
 ];
 
 export function getAllowedCorsHeaders(requestOrigin: string | null): Record<string, string> {

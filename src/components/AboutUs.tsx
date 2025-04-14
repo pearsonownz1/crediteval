@@ -178,57 +178,59 @@ const AboutUs = () => {
           </div>
 
           <div className="grid gap-8 md:grid-cols-3">
+            {/* Guy Pearson */}
             <div className="text-center">
               <Avatar className="h-32 w-32 mx-auto mb-4">
                 <AvatarImage
-                  src="https://api.dicebear.com/7.x/avataaars/svg?seed=Michael"
-                  alt="Michael Chen"
+                  src="/guy-pearson.png"
+                  alt="Guy Pearson"
                 />
-                <AvatarFallback>MC</AvatarFallback>
+                <AvatarFallback>GP</AvatarFallback>
               </Avatar>
-              <h3 className="text-xl font-bold">Michael Chen, Ph.D.</h3>
-              <p className="text-primary font-medium mb-2">Founder & CEO</p>
-              <p className="text-sm text-gray-600 max-w-xs mx-auto">
-                Former international education advisor with 20+ years of
-                experience in credential evaluation and academic administration.
-              </p>
+              <h3 className="text-xl font-bold">Guy Pearson</h3>
+              <p className="text-primary font-medium mb-2">Founder</p>
+              {/* Optional: Add a short bio if available */}
+              {/* <p className="text-sm text-gray-600 max-w-xs mx-auto">
+                [Bio for Guy Pearson]
+              </p> */}
             </div>
 
+            {/* Staffan Moritz */}
             <div className="text-center">
               <Avatar className="h-32 w-32 mx-auto mb-4">
                 <AvatarImage
-                  src="https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah"
-                  alt="Sarah Rodriguez"
+                  src="/staffan-moritz.png"
+                  alt="Staffan Moritz"
                 />
-                <AvatarFallback>SR</AvatarFallback>
+                <AvatarFallback>SM</AvatarFallback>
               </Avatar>
-              <h3 className="text-xl font-bold">Sarah Rodriguez, M.Ed.</h3>
+              <h3 className="text-xl font-bold">Staffan Moritz</h3>
+              <p className="text-primary font-medium mb-2">
+                Co-Founder & Chief Revenue Officer
+              </p>
+              {/* Optional: Add a short bio if available */}
+              {/* <p className="text-sm text-gray-600 max-w-xs mx-auto">
+                [Bio for Staffan Moritz]
+              </p> */}
+            </div>
+
+            {/* Elena Baker */}
+            <div className="text-center">
+              <Avatar className="h-32 w-32 mx-auto mb-4">
+                <AvatarImage
+                  src="/elena-baker.png"
+                  alt="Elena Baker"
+                />
+                <AvatarFallback>EB</AvatarFallback>
+              </Avatar>
+              <h3 className="text-xl font-bold">Elena Baker</h3>
               <p className="text-primary font-medium mb-2">
                 Director of Evaluations
               </p>
-              <p className="text-sm text-gray-600 max-w-xs mx-auto">
-                Specialized in international credential evaluation with
-                expertise in educational systems across Latin America, Europe,
-                and Asia.
-              </p>
-            </div>
-
-            <div className="text-center">
-              <Avatar className="h-32 w-32 mx-auto mb-4">
-                <AvatarImage
-                  src="https://api.dicebear.com/7.x/avataaars/svg?seed=David"
-                  alt="David Okonkwo"
-                />
-                <AvatarFallback>DO</AvatarFallback>
-              </Avatar>
-              <h3 className="text-xl font-bold">David Okonkwo, MBA</h3>
-              <p className="text-primary font-medium mb-2">
-                Director of Operations
-              </p>
-              <p className="text-sm text-gray-600 max-w-xs mx-auto">
-                Oversees day-to-day operations with a focus on process
-                efficiency and exceptional customer service delivery.
-              </p>
+              {/* Optional: Add a short bio if available */}
+              {/* <p className="text-sm text-gray-600 max-w-xs mx-auto">
+                 [Bio for Elena Baker]
+              </p> */}
             </div>
           </div>
         </div>
@@ -247,12 +249,13 @@ const AboutUs = () => {
             </p>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-4">
+          <div className="grid gap-6 md:grid-cols-4"> {/* Restored grid columns to 4 */}
             <div className="bg-white p-6 rounded-lg shadow-sm text-center">
+              {/* Using Award icon as a placeholder, replace if a more specific icon is desired */}
               <Award className="h-12 w-12 text-primary mx-auto mb-4" />
-              <h3 className="font-medium">NACES®</h3>
+              <h3 className="font-medium">TAICEP</h3>
               <p className="text-sm text-gray-600 mt-2">
-                National Association of Credential Evaluation Services
+                The Association for International Credential Evaluation Professionals
               </p>
             </div>
 

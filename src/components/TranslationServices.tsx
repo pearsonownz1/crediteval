@@ -31,8 +31,49 @@ const TranslationServices = () => {
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <Button asChild className="bg-primary hover:bg-primary/90">
-                <Link to="/order">Start Your Order</Link>
+                <Link to="/order-wizard">Start Your Order</Link>
               </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Trust Banner Section */}
+      <section className="py-12 bg-gray-50">
+        <div className="container mx-auto px-4 text-center">
+          {/* Star Rating & Headshots */}
+          <div className="flex justify-center items-center mb-4 space-x-2">
+            {/* Placeholder for 5 stars - using Lucide Star icon */}
+            {[...Array(5)].map((_, i) => (
+              <svg key={i} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-400 h-5 w-5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+            ))}
+          </div>
+          <div className="flex justify-center -space-x-2 mb-4">
+             {/* Actual Headshots */}
+            <img className="inline-block h-8 w-8 rounded-full ring-2 ring-white" src="https://randomuser.me/api/portraits/men/32.jpg" alt="Client 1"/>
+            <img className="inline-block h-8 w-8 rounded-full ring-2 ring-white" src="https://randomuser.me/api/portraits/women/44.jpg" alt="Client 2"/>
+            <img className="inline-block h-8 w-8 rounded-full ring-2 ring-white" src="https://randomuser.me/api/portraits/men/76.jpg" alt="Client 3"/>
+          </div>
+          <p className="text-lg font-medium text-gray-700 mb-8">
+            Trusted by over 50K Clients
+          </p>
+
+          {/* Logos */}
+          <div className="flex flex-col md:flex-row justify-center items-center gap-8 md:gap-12 lg:gap-16">
+            {/* ATA Logo */}
+            <div className="flex flex-col items-center">
+              <img src="/ata-logo.png" alt="American Translators Association Member" className="h-12 mb-2 object-contain"/>
+              <p className="text-sm text-gray-600">Corporate Member</p>
+            </div>
+            {/* BBB Logo */}
+            <div className="flex flex-col items-center">
+              <img src="/bbb-accredited.png" alt="BBB Accredited Business A+ Rating" className="h-12 mb-2 object-contain"/>
+              <p className="text-sm text-gray-600 max-w-xs">Accredited with an A+ rating from the BBB</p>
+            </div>
+            {/* Trustpilot Logo */}
+            <div className="flex flex-col items-center">
+              <img src="/trustpilot-logo.png" alt="Trustpilot Rating" className="h-12 mb-2 object-contain"/>
+              <p className="text-sm text-gray-600">Rated 4.8 Stars With 2.7k Reviews</p>
             </div>
           </div>
         </div>
@@ -89,7 +130,7 @@ const TranslationServices = () => {
               </CardContent>
               <CardFooter>
                 <Button asChild className="w-full">
-                  <Link to="/order">Order Now</Link>
+                  <Link to="/order-wizard">Order Now</Link>
                 </Button>
               </CardFooter>
             </Card>
@@ -131,7 +172,7 @@ const TranslationServices = () => {
               </CardContent>
               <CardFooter>
                 <Button asChild className="w-full">
-                  <Link to="/order">Order Now</Link>
+                  <Link to="/order-wizard">Order Now</Link>
                 </Button>
               </CardFooter>
             </Card>
@@ -173,7 +214,7 @@ const TranslationServices = () => {
               </CardContent>
               <CardFooter>
                 <Button asChild className="w-full">
-                  <Link to="/order">Order Now</Link>
+                  <Link to="/order-wizard">Order Now</Link>
                 </Button>
               </CardFooter>
             </Card>
@@ -288,7 +329,7 @@ const TranslationServices = () => {
               size="lg"
               className="bg-primary hover:bg-primary/90"
             >
-              <Link to="/order">Start Your Order Now</Link>
+              <Link to="/order-wizard">Start Your Order Now</Link>
             </Button>
           </div>
         </div>
@@ -379,7 +420,7 @@ const TranslationServices = () => {
             variant="outline"
             className="bg-white text-primary hover:bg-gray-100"
           >
-            <Link to="/order">Start Your Order</Link>
+            <Link to="/order-wizard">Start Your Order</Link>
           </Button>
         </div>
       </section>

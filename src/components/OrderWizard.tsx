@@ -77,43 +77,58 @@ const OrderWizard = ({
   const [orderData, setOrderData] = useState({
     customerInfo: { // Renamed from account
       email: "",
-      // password: "", // Removed password
       firstName: "",
       lastName: "",
     },
     documents: [] as DocumentState[], // Use the defined type
     services: {
-      type: "translation",
-      language: "spanish",
+      type: "translation", // 'translation', 'evaluation', 'expert'
+      language: "spanish", // For translation
+      pageCount: 1, // For translation
+      evaluationType: "document", // 'document', 'course' - For evaluation
+      visaType: "", // For expert opinion letter
       urgency: "standard",
       specialInstructions: "",
     },
     payment: {
       method: "credit-card",
-      cardNumber: "",
-      expiryDate: "",
-      cvv: "",
-      // Removed cardNumber, expiryDate, cvv, nameOnCard
+      // Removed specific card fields, handled by Stripe Element
     },
   });
 
   const totalSteps = 5; // Your Info, Documents, Services, Review, Payment
   const progressPercentage = ((currentStep + 1) / totalSteps) * 100;
 
-  // --- Calculate Price Function (moved here for use in handleNext) ---
-  const calculatePrice = (currentOrderData: typeof orderData) => {
-    let basePrice = 0;
-    switch (currentOrderData.services.type) {
-      case "translation": basePrice = 75; break;
-      case "evaluation": basePrice = 150; break;
-      case "both": basePrice = 200; break;
+  // --- Calculate Price Function ---
+  const calculatePrice = (currentOrderData: typeof orderData): number => {
+    let totalPrice = 0;
+    const { type, pageCount, evaluationType } = currentOrderData.services;
+
+    // Service Costs
+    if (type === "translation") {
+      const pages = Math.max(1, pageCount || 1);
+      totalPrice += pages * 25;
+    } else if (type === "evaluation") {
+      if (evaluationType === "document") {
+        totalPrice += 85;
+      } else if (evaluationType === "course") {
+        totalPrice += 150; // Placeholder price
+      }
+    } else if (type === "expert") {
+      totalPrice += 599; // Expert Opinion Letter base price
     }
+    // Note: 'both' type removed for simplicity with 'expert' addition.
+    // If 'both' is needed, logic needs adjustment.
+
+    // Urgency Multiplier
     switch (currentOrderData.services.urgency) {
-      case "standard": return basePrice;
-      case "expedited": return basePrice * 1.5;
-      case "rush": return basePrice * 2;
-      default: return basePrice;
+      case "expedited": totalPrice *= 1.5; break;
+      case "rush": totalPrice *= 2; break;
+      case "standard": // No change for standard
+      default: break; // No change
     }
+
+    return totalPrice;
   };
   // --- End Calculate Price Function ---
 
@@ -179,24 +194,18 @@ const OrderWizard = ({
 
       try {
         // --- 1. Create PaymentIntent on Backend ---
-        // TODO: Replace with actual call to your backend endpoint
-        // This endpoint should take the order amount (calculate it based on orderData)
-        // and return the client_secret of the created PaymentIntent.
         const functionUrl = "https://lholxkbtosixszauuzmb.supabase.co/functions/v1/create-payment-intent";
         const calculatedAmount = Math.round(calculatePrice(orderData) * 100); // Calculate amount in cents
 
         console.log(`Calling Supabase function at ${functionUrl} for order ${orderId} with amount ${calculatedAmount}`);
 
+        // No session check or Authorization header needed since verify_jwt = false for create-payment-intent
         const response = await fetch(functionUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            // Add Supabase Anon Key - required for invoking functions unless you change settings
-            // Get this from your Supabase project settings (API > Project API keys > anon public)
-            // Ideally, load this from environment variables (.env file)
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY, // Assumes you have this in your .env
-            // If user is logged in, you might want to pass the Authorization header
-            // 'Authorization': `Bearer ${supabase.auth.session()?.access_token}`, // Uncomment if needed
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY, // Use anon key (still required by gateway)
+            // Authorization header removed
           },
           body: JSON.stringify({
             amount: calculatedAmount,
@@ -250,7 +259,36 @@ const OrderWizard = ({
           // NOTE: Order status update (to 'paid') should ideally be handled
           // by a backend webhook listening to Stripe's 'payment_intent.succeeded' event.
           // The 'create-payment-intent' function now sets it to 'pending_payment'.
-          // For now, we assume success and redirect.
+
+          // --- Trigger Receipt Email ---
+          if (orderId) {
+            console.log(`Attempting to send receipt email for order ${orderId}`);
+            // Call the function asynchronously. Don't block navigation on email success/failure.
+            // No session/Authorization needed since verify_jwt = false for this function.
+            fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-order-receipt`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY, // Still need anon key for gateway
+                // 'Authorization' header removed
+              },
+              body: JSON.stringify({ orderId: orderId })
+            })
+            .then(async response => {
+              if (!response.ok) {
+                const errorBody = await response.json().catch(() => ({}));
+                console.error(`Failed to send receipt email for order ${orderId}. Status: ${response.status}`, errorBody);
+              } else {
+                console.log(`Receipt email request successful for order ${orderId}.`);
+              }
+            })
+            .catch(emailError => {
+              console.error(`Error calling send-order-receipt function for order ${orderId}:`, emailError);
+            });
+          } else {
+            console.warn("Order ID not available, cannot send receipt email.");
+          }
+          // --- End Trigger Receipt Email ---
 
           setPaymentProcessing(false); // Stop processing indicator
 
@@ -297,7 +335,7 @@ const OrderWizard = ({
   };
 
   const steps = [
-    { title: "Your Info", icon: <UserIcon className="h-5 w-5" /> }, // Changed first step
+    { title: "Your Info", icon: <UserIcon className="h-5 w-5" /> },
     { title: "Documents", icon: <Upload className="h-5 w-5" /> },
     { title: "Services", icon: <Globe className="h-5 w-5" /> },
     { title: "Review", icon: <Check className="h-5 w-5" /> },
@@ -346,24 +384,23 @@ const OrderWizard = ({
               transition={{ duration: 0.3 }}
             >
               {currentStep === 0 && (
-                <CustomerInfoStep // Changed component
-                  data={orderData.customerInfo} // Changed data source
-                  updateData={(data) => updateOrderData("customerInfo", data)} // Changed section name
-                  error={error} // Pass error state
+                <CustomerInfoStep
+                  data={orderData.customerInfo}
+                  updateData={(data) => updateOrderData("customerInfo", data)}
+                  error={error}
                 />
               )}
 
               {currentStep === 1 && (
                 <DocumentUploadStep
                   documents={orderData.documents}
-                  // Use functional update form for setOrderData
                   updateDocuments={(updater) =>
                     setOrderData(prevData => ({
                       ...prevData,
                       documents: typeof updater === 'function' ? updater(prevData.documents) : updater
                     }))
                   }
-                  orderId={orderId} // Pass orderId down
+                  orderId={orderId}
                 />
                )}
 
@@ -377,7 +414,7 @@ const OrderWizard = ({
               {currentStep === 3 && <ReviewStep orderData={orderData} />}
 
               {currentStep === 4 && (
-                <PaymentStep error={error} /> // Pass error state down
+                <PaymentStep error={error} />
               )}
             </motion.div>
           </AnimatePresence>
@@ -392,13 +429,10 @@ const OrderWizard = ({
             <ArrowLeft className="mr-2 h-4 w-4" /> Back
           </Button>
 
-          <Button onClick={handleNext} disabled={isSubmitting && currentStep === 0}>
-            {isSubmitting && currentStep === 0 ? "Saving..." : currentStep === totalSteps - 1 ? "Complete Order" : "Next"}
-            {!(isSubmitting && currentStep === 0) && currentStep !== totalSteps - 1 && (
-              <ArrowRight className="ml-2 h-4 w-4" />
-            )}
-            {/* Update button text and disable state for payment step */}
-            {paymentProcessing ? "Processing Payment..." : currentStep === totalSteps - 1 ? "Complete Order" : "Next"}
+          <Button onClick={handleNext} disabled={(isSubmitting && currentStep === 0) || paymentProcessing}>
+            {isSubmitting && currentStep === 0 ? "Saving..." :
+             paymentProcessing ? "Processing Payment..." :
+             currentStep === totalSteps - 1 ? "Complete Order" : "Next"}
             {!(isSubmitting && currentStep === 0) && !paymentProcessing && currentStep !== totalSteps - 1 && (
               <ArrowRight className="ml-2 h-4 w-4" />
             )}
@@ -482,7 +516,6 @@ const DocumentUploadStep = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Function to update a specific document's state
-  // Function to update a specific document's state using its unique ID (using functional update)
   const updateDocumentStatusById = (id: string, newStatus: Partial<DocumentState>) => {
     updateDocuments(prevDocs => {
       const docIndex = prevDocs.findIndex(doc => doc.id === id);
@@ -545,13 +578,15 @@ const DocumentUploadStep = ({
         console.log(`Calling backend function to add document path for order ${orderId}`);
         const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-order-documents`; // Get Supabase URL from env
 
+        // No need to get session or send Authorization header since verify_jwt is false for this function
+        // The function uses the service_role key internally for secure DB operations.
+
         const response = await fetch(functionUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY, // Use anon key
-                // Add Authorization header if users must be logged in to upload
-                // 'Authorization': `Bearer ${supabase.auth.session()?.access_token}`,
+                'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY, // Use anon key (still required by gateway)
+                // Authorization header removed
             },
             body: JSON.stringify({
                 orderId: String(orderId), // Convert orderId to string before sending
@@ -768,46 +803,74 @@ const ServiceSelectionStep = ({
           <SelectContent>
             <SelectItem value="translation">Document Translation</SelectItem>
             <SelectItem value="evaluation">Credential Evaluation</SelectItem>
-            <SelectItem value="both">Translation & Evaluation</SelectItem>
+            <SelectItem value="expert">Expert Opinion Letter ($599)</SelectItem>
+            {/* <SelectItem value="both">Translation & Evaluation</SelectItem> */} {/* 'both' removed for simplicity */}
           </SelectContent>
         </Select>
       </div>
 
-      {(data.type === "translation" || data.type === "both") && (
-        <div className="space-y-2">
-          <Label htmlFor="language">Target Language</Label>
-          <Select
-            value={data.language}
-            onValueChange={(value) => updateData({ language: value })}
-          >
-            <SelectTrigger id="language">
-              <SelectValue placeholder="Select language" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="english">English</SelectItem>
-              <SelectItem value="spanish">Spanish</SelectItem>
-              <SelectItem value="french">French</SelectItem>
-              <SelectItem value="german">German</SelectItem>
-              <SelectItem value="chinese">Chinese</SelectItem>
-              <SelectItem value="arabic">Arabic</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+      {/* == Conditional Fields based on Service Type == */}
+
+      {/* Fields for Translation */}
+      {data.type === "translation" && (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="language">Target Language</Label>
+            <Select
+              value={data.language}
+              onValueChange={(value) => updateData({ language: value })}
+            >
+              <SelectTrigger id="language">
+                <SelectValue placeholder="Select language" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="english">English</SelectItem>
+                <SelectItem value="spanish">Spanish</SelectItem>
+                <SelectItem value="french">French</SelectItem>
+                <SelectItem value="german">German</SelectItem>
+                <SelectItem value="chinese">Chinese</SelectItem>
+                <SelectItem value="arabic">Arabic</SelectItem>
+                {/* Add other languages as needed */}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="page-count">Number of Pages for Translation</Label>
+            <Input
+              id="page-count"
+              type="number"
+              min="1"
+              value={data.pageCount || 1}
+              onChange={(e) => updateData({ pageCount: parseInt(e.target.value, 10) || 1 })}
+              className="w-24" // Make input smaller
+            />
+            <p className="text-xs text-muted-foreground">($25 per page)</p>
+          </div>
+        </>
       )}
 
-      {(data.type === "evaluation" || data.type === "both") && (
+      {/* Fields for Evaluation */}
+      {data.type === "evaluation" && (
         <div className="space-y-2">
           <Label>Evaluation Type</Label>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="border rounded-lg p-4 cursor-pointer hover:border-primary transition-colors">
+            {/* Course-by-Course Option */}
+            <div
+              className={`border rounded-lg p-4 cursor-pointer hover:border-primary transition-colors ${data.evaluationType === 'course' ? 'border-primary ring-1 ring-primary' : ''}`}
+              onClick={() => updateData({ evaluationType: 'course' })}
+            >
               <div className="flex items-start space-x-2">
-                <Checkbox id="course-by-course" />
+                 <Checkbox
+                    id="course-by-course"
+                    checked={data.evaluationType === 'course'}
+                    onCheckedChange={() => updateData({ evaluationType: 'course' })} // Ensure checkbox click also updates
+                 />
                 <div>
                   <Label
-                    htmlFor="course-by-course"
-                    className="font-medium cursor-pointer"
+                    htmlFor="course-by-course" // Keep htmlFor for accessibility
+                    className="font-medium cursor-pointer" // Keep cursor pointer
                   >
-                    Course-by-Course
+                    Course-by-Course ($150) {/* Add price indication */}
                   </Label>
                   <p className="text-sm text-muted-foreground">
                     Detailed evaluation of all courses, grades, and degrees
@@ -815,15 +878,23 @@ const ServiceSelectionStep = ({
                 </div>
               </div>
             </div>
-            <div className="border rounded-lg p-4 cursor-pointer hover:border-primary transition-colors">
+             {/* Document-by-Document Option */}
+            <div
+               className={`border rounded-lg p-4 cursor-pointer hover:border-primary transition-colors ${data.evaluationType === 'document' ? 'border-primary ring-1 ring-primary' : ''}`}
+               onClick={() => updateData({ evaluationType: 'document' })}
+            >
               <div className="flex items-start space-x-2">
-                <Checkbox id="document-by-document" />
+                 <Checkbox
+                    id="document-by-document"
+                    checked={data.evaluationType === 'document'}
+                    onCheckedChange={() => updateData({ evaluationType: 'document' })} // Ensure checkbox click also updates
+                 />
                 <div>
                   <Label
-                    htmlFor="document-by-document"
-                    className="font-medium cursor-pointer"
+                    htmlFor="document-by-document" // Keep htmlFor for accessibility
+                    className="font-medium cursor-pointer" // Keep cursor pointer
                   >
-                    Document-by-Document
+                    Document-by-Document ($85) {/* Add price indication */}
                   </Label>
                   <p className="text-sm text-muted-foreground">
                     Basic evaluation of degrees and diplomas only
@@ -835,6 +906,35 @@ const ServiceSelectionStep = ({
         </div>
       )}
 
+       {/* Fields for Expert Opinion Letter */}
+      {data.type === "expert" && (
+        <div className="space-y-2">
+          <Label htmlFor="visa-type">Visa Type</Label>
+          <Select
+            value={data.visaType}
+            onValueChange={(value) => updateData({ visaType: value })}
+          >
+            <SelectTrigger id="visa-type">
+              <SelectValue placeholder="Select Visa Type" />
+            </SelectTrigger>
+            <SelectContent>
+              {/* Common US Visa Types - Add more as needed */}
+              <SelectItem value="H-1B">H-1B (Specialty Occupation)</SelectItem>
+              <SelectItem value="O-1">O-1 (Extraordinary Ability)</SelectItem>
+              <SelectItem value="L-1">L-1 (Intracompany Transferee)</SelectItem>
+              <SelectItem value="E-2">E-2 (Treaty Investor)</SelectItem>
+              <SelectItem value="EB-1">EB-1 (Priority Worker)</SelectItem>
+              <SelectItem value="EB-2 NIW">EB-2 NIW (National Interest Waiver)</SelectItem>
+              <SelectItem value="TN">TN (NAFTA Professionals)</SelectItem>
+              <SelectItem value="F-1 OPT/STEM">F-1 OPT/STEM Extension</SelectItem>
+              <SelectItem value="Other">Other (Specify in Instructions)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+
+      {/* Urgency and Special Instructions (Show for all types) */}
       <div className="space-y-2">
         <Label htmlFor="urgency">Processing Time</Label>
         <Select
@@ -882,8 +982,9 @@ const ReviewStep = ({ orderData }: ReviewStepProps) => {
         return "Document Translation";
       case "evaluation":
         return "Credential Evaluation";
-      case "both":
-        return "Translation & Evaluation";
+      case "expert":
+        return "Expert Opinion Letter";
+      // 'both' removed
       default:
         return "Not specified";
     }
@@ -902,31 +1003,35 @@ const ReviewStep = ({ orderData }: ReviewStepProps) => {
     }
   };
 
-  // Calculate estimated price based on service type and urgency - MOVED TO OrderWizard scope
-  // const calculatePrice = () => { ... }; // Function logic is now outside this component
+  // Re-define calculateReviewPrice locally within ReviewStep for display purposes
+  // This avoids prop drilling the function but duplicates logic slightly.
+  const calculateReviewPrice = (reviewOrderData: any) => {
+    let totalPrice = 0;
+    const { type, pageCount, evaluationType } = reviewOrderData.services;
 
-  // Need access to the calculatePrice function from the parent scope
-  // This component should receive the calculated price as a prop, or the function itself.
-  // For simplicity, let's assume the parent passes the calculated price.
-  // We'll need to adjust the parent component (`OrderWizard`) to pass this.
-  // OR, we can just call the function directly if it's in scope (which it isn't here).
-  // Let's revert ReviewStep to calculate its own price for now, as it was originally.
-
-  const calculateReviewPrice = () => {
-      let basePrice = 0;
-      switch (orderData.services.type) {
-        case "translation": basePrice = 75; break;
-        case "evaluation": basePrice = 150; break;
-        case "both": basePrice = 200; break;
+    if (type === "translation") {
+      const pages = Math.max(1, pageCount || 1);
+      totalPrice += pages * 25;
+    } else if (type === "evaluation") {
+      if (evaluationType === "document") {
+        totalPrice += 85;
+      } else if (evaluationType === "course") {
+        totalPrice += 150;
       }
-      switch (orderData.services.urgency) {
-        case "standard": return basePrice;
-        case "expedited": return basePrice * 1.5;
-        case "rush": return basePrice * 2;
-        default: return basePrice;
-      }
-    };
+    } else if (type === "expert") {
+        totalPrice += 599;
+    }
+    // 'both' removed
 
+    switch (reviewOrderData.services.urgency) {
+      case "expedited": totalPrice *= 1.5; break;
+      case "rush": totalPrice *= 2; break;
+      default: break;
+    }
+    return totalPrice;
+  };
+
+  const calculatedPrice = calculateReviewPrice(orderData); // Call the local function
 
   return (
     <div className="space-y-6">
@@ -940,11 +1045,11 @@ const ReviewStep = ({ orderData }: ReviewStepProps) => {
       <div className="space-y-4">
         <div className="bg-muted p-4 rounded-lg space-y-3">
           <div>
-            <h4 className="font-medium">Customer Information</h4> {/* Changed title */}
+            <h4 className="font-medium">Customer Information</h4>
             <p className="text-sm">
-              {orderData.customerInfo.firstName} {orderData.customerInfo.lastName} {/* Changed source */}
+              {orderData.customerInfo.firstName} {orderData.customerInfo.lastName}
             </p>
-            <p className="text-sm">{orderData.customerInfo.email}</p> {/* Changed source */}
+            <p className="text-sm">{orderData.customerInfo.email}</p>
           </div>
 
           <div>
@@ -965,12 +1070,20 @@ const ReviewStep = ({ orderData }: ReviewStepProps) => {
           <div>
             <h4 className="font-medium">Service Details</h4>
             <p className="text-sm">Service Type: {getServiceTypeText()}</p>
-            {(orderData.services.type === "translation" ||
-              orderData.services.type === "both") && (
-              <p className="text-sm">
-                Target Language: {orderData.services.language}
-              </p>
+            {/* Conditional details based on service type */}
+            {orderData.services.type === "translation" && (
+              <>
+                <p className="text-sm">Target Language: {orderData.services.language}</p>
+                <p className="text-sm">Pages for Translation: {orderData.services.pageCount || 1}</p>
+              </>
             )}
+            {orderData.services.type === "evaluation" && (
+              <p className="text-sm">Evaluation Type: {orderData.services.evaluationType === 'document' ? 'Document-by-Document' : 'Course-by-Course'}</p>
+            )}
+            {orderData.services.type === "expert" && (
+              <p className="text-sm">Visa Type: {orderData.services.visaType || 'Not specified'}</p>
+            )}
+            {/* End conditional details */}
             <p className="text-sm">Processing Time: {getUrgencyText()}</p>
             {orderData.services.specialInstructions && (
               <div>
@@ -988,7 +1101,7 @@ const ReviewStep = ({ orderData }: ReviewStepProps) => {
         <div className="border-t pt-4">
           <div className="flex justify-between">
             <span className="font-medium">Estimated Total:</span>
-            <span className="font-bold">${calculateReviewPrice().toFixed(2)}</span> {/* Use the local function */}
+            <span className="font-bold">${calculatedPrice.toFixed(2)}</span>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
             Final price may vary based on document complexity and additional
@@ -1035,14 +1148,6 @@ const PaymentStep = ({ error }: PaymentStepProps) => { // Added error prop
         </p>
       </div>
 
-      {/* Payment Method Selection (Optional - Keep if needed) */}
-      {/* For this example, we'll assume Credit Card is the only method for Stripe */}
-      {/*
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-         ... payment method selection ...
-      </div>
-      */}
-
       {/* --- Stripe Card Element --- */}
       <div className="space-y-4 mt-4">
         <Label htmlFor="card-element">Credit or debit card</Label>
@@ -1054,9 +1159,6 @@ const PaymentStep = ({ error }: PaymentStepProps) => { // Added error prop
 
       {/* Display Payment Error */}
       {error && <p className="text-red-500 text-sm mt-4">{error}</p>}
-
-      {/* Placeholder for other payment methods if needed */}
-      {/* e.g., PayPal button or Bank Transfer info */}
 
       <div className="flex items-start space-x-2 mt-6">
         <Checkbox id="terms" />

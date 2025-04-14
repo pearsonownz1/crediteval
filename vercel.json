@@ -1,0 +1,10 @@
+{
+  "redirects": [
+    {
+      "source": "/credentialevaluation",
+      "destination": "/evaluation",
+      "permanent": true
+    }
+  ],
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}

@@ -94,23 +94,32 @@ serve(async (req) => {
     // the payment might still succeed on Stripe, but the order status won't reflect it initially.
     // A webhook is the robust way to handle the final 'paid' status.
     try {
-      const { error: updateError } = await supabaseAdmin
+      // --- Add detailed logging before update ---
+      console.log(`Attempting to update order ID: ${orderIdString} (Type: ${typeof orderIdString})`);
+      console.log(`Updating with total_amount: ${amount} (Type: ${typeof amount})`);
+      // --- End detailed logging ---
+
+      const { data: updateData, error: updateError } = await supabaseAdmin
         .from('orders')
         .update({
           status: 'pending_payment', // Indicate payment initiated
           stripe_payment_intent_id: paymentIntent.id,
+          total_amount: amount, // Add the total_amount update here
         })
         .eq('id', orderIdString) // Use converted string
         .select('id') // Select something to confirm update
         .single(); // Ensure it targets one row
 
+      // --- Add detailed logging after update ---
       if (updateError) {
+        console.error(`DB UPDATE FAILED for order ${orderIdString}. Error:`, JSON.stringify(updateError, null, 2));
         // Log the error but don't fail the request, as payment can still proceed
-        console.error(`Failed to update order ${orderIdString} status after PI creation:`, updateError);
         // Consider adding specific logging or monitoring here
       } else {
-        console.log(`Order ${orderIdString} status updated to 'pending_payment' and PI ID stored.`);
+        console.log(`DB UPDATE SUCCEEDED for order ${orderIdString}. Result data:`, JSON.stringify(updateData, null, 2));
+        console.log(`Order ${orderIdString} status updated to 'pending_payment', total_amount set to ${amount}, and PI ID stored.`);
       }
+      // --- End detailed logging ---
     } catch (dbError) {
       console.error(`Database exception updating order ${orderIdString} status:`, dbError);
     }
