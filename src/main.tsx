@@ -8,9 +8,17 @@ import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext"; // Import AuthProvider
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
+import Tracker from '@openreplay/tracker'; // Import OpenReplay Tracker
+import trackerAssist from '@openreplay/tracker-assist'; // Import Assist plugin
 
 import { TempoDevtools } from "tempo-devtools";
 TempoDevtools.init();
+
+const tracker = new Tracker({
+  projectKey: "mm7loMLeLPc0as2lWG72",
+});
+tracker.use(trackerAssist()); // Use the Assist plugin
+tracker.start()
 
 const basename = import.meta.env.BASE_URL;
 

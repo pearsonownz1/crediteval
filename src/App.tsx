@@ -18,6 +18,13 @@ import OrderSuccessPage from "./components/OrderSuccessPage"; // Import OrderSuc
 import PricingPage from "./components/PricingPage"; // Import PricingPage
 import PrivacyPolicy from "./components/PrivacyPolicy"; // Import PrivacyPolicy
 import TermsOfService from "./components/TermsOfService"; // Import TermsOfService
+import ContactSuccessPage from "./components/ContactSuccessPage"; // Import ContactSuccessPage
+import FAQPage from "./components/FAQPage"; // Import FAQPage
+// Import Use Case components
+import AllUseCases from "./components/use-cases/AllUseCases";
+import ImmigrationUseCase from "./components/use-cases/ImmigrationUseCase";
+import AcademicUseCase from "./components/use-cases/AcademicUseCase";
+import EmploymentUseCase from "./components/use-cases/EmploymentUseCase";
 import routes from "tempo-routes";
 
 function App() {
@@ -36,11 +43,21 @@ function App() {
           <Route path="/pricing" element={<Layout><PricingPage /></Layout>} /> {/* Add PricingPage route with Layout */}
           <Route path="/privacy-policy" element={<Layout><PrivacyPolicy /></Layout>} /> {/* Add Privacy Policy route */}
           <Route path="/terms-of-service" element={<Layout><TermsOfService /></Layout>} /> {/* Add Terms of Service route */}
+          <Route path="/contact-success" element={<Layout><ContactSuccessPage /></Layout>} /> {/* Add Contact Success route */}
+          <Route path="/faq" element={<Layout><FAQPage /></Layout>} /> {/* Add FAQ route */}
+          {/* Add Use Case Routes */}
+          <Route path="/use-cases" element={<Layout><AllUseCases /></Layout>} />
+          <Route path="/use-cases/immigration" element={<Layout><ImmigrationUseCase /></Layout>} />
+          <Route path="/use-cases/academic" element={<Layout><AcademicUseCase /></Layout>} />
+          <Route path="/use-cases/employment" element={<Layout><EmploymentUseCase /></Layout>} />
+
+          {/* <Route path="/faq" element={<Layout><FAQPage /></Layout>} /> */} {/* REMOVED Duplicate FAQ route */}
+          <Route path="/order-wizard" element={<Layout><OrderWizard /></Layout>} /> {/* Add Layout */}
 
           {/* Routes without standard Layout (Auth, Order Process, Admin) */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          <Route path="/order-wizard" element={<OrderWizard />} /> {/* Made public */}
+          {/* <Route path="/order-wizard" element={<OrderWizard />} /> */} {/* Moved to Layout routes */}
           <Route path="/order-success" element={<OrderSuccessPage />} /> {/* Add success page route */}
 
           {/* Protected Routes */}

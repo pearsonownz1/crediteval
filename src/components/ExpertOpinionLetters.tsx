@@ -35,9 +35,18 @@ const ExpertOpinionLetters = () => {
               expert opinion letters
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <Button asChild className="bg-primary hover:bg-primary/90">
-                <Link to="/order">Request Your Letter</Link>
-              </Button>
+              {/* Workaround: Wrap Button inside Link */}
+              <Link to="/order-wizard">
+                <Button className="bg-primary hover:bg-primary/90">
+                  Request Your Letter
+                </Button>
+              </Link>
+              {/* Workaround: Wrap Button inside Link */}
+              <Link to="/quote">
+                <Button variant="outline" className="border-primary text-primary hover:bg-primary/10">
+                  Get a Quote
+                </Button>
+              </Link>
             </div>
           </div>
         </div>

@@ -74,19 +74,8 @@ const Footer = () => {
                 </Link>
               </li>
               <li>
-                <Link
-                  to="/translation/certified" // Assuming this is a valid route
-                  className="hover:text-white"
-                >
-                  Certified Translations
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/evaluation/course" // Assuming this is a valid route
-                  className="hover:text-white"
-                >
-                  Course-by-Course Evaluation
+                <Link to="/expert-opinion" className="hover:text-white">
+                  Expert Opinion Letters
                 </Link>
               </li>
             </ul>

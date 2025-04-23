@@ -17,35 +17,35 @@ const testimonials: Testimonial[] = [
   {
     id: 1,
     name: "Maria Garcia",
-    headshotUrl: "https://via.placeholder.com/100/8FBC8F/FFFFFF?text=MG", // Placeholder image
+    headshotUrl: "https://randomuser.me/api/portraits/women/12.jpg", // Female headshot
     rating: 5,
     testimonial: "Incredible service! The translation was accurate and delivered ahead of schedule. Highly recommend!",
   },
   {
     id: 2,
     name: "John Smith",
-    headshotUrl: "https://via.placeholder.com/100/ADD8E6/FFFFFF?text=JS", // Placeholder image
+    headshotUrl: "https://randomuser.me/api/portraits/men/15.jpg", // Male headshot
     rating: 5,
     testimonial: "The credential evaluation process was smooth and professional. They helped me immensely with my university application.",
   },
   {
     id: 3,
     name: "Aisha Khan",
-    headshotUrl: "https://via.placeholder.com/100/FFB6C1/FFFFFF?text=AK", // Placeholder image
+    headshotUrl: "https://randomuser.me/api/portraits/women/26.jpg", // Female headshot
     rating: 5,
     testimonial: "Fast, reliable, and excellent communication. The expert opinion letter was exactly what I needed.",
   },
   {
     id: 4,
     name: "David Lee",
-    headshotUrl: "https://via.placeholder.com/100/FFD700/FFFFFF?text=DL", // Placeholder image
+    headshotUrl: "https://randomuser.me/api/portraits/men/21.jpg", // Male headshot
     rating: 5,
     testimonial: "I was impressed by the quality and speed of the translation. Very professional team.",
   },
   {
     id: 5,
     name: "Sophia Müller",
-    headshotUrl: "https://via.placeholder.com/100/E6E6FA/FFFFFF?text=SM", // Placeholder image
+    headshotUrl: "https://randomuser.me/api/portraits/women/39.jpg", // Female headshot
     rating: 5,
     testimonial: "Their evaluation report was detailed and accepted without any issues. Thank you!",
   },
@@ -109,6 +109,7 @@ const TestimonialCarousel = () => {
             return (
               <div key={testimonial.id} className="px-2 md:px-4"> {/* Add padding between slides */}
                 <div className="bg-white p-6 rounded-lg shadow-md h-full flex flex-col"> {/* Ensure consistent height if needed */}
+                  {/* Restore Avatar */}
                   <div className="flex items-center mb-4">
                     <Avatar className="w-16 h-16 mr-4">
                       <AvatarImage src={testimonial.headshotUrl} alt={testimonial.name} />

@@ -1,11 +1,29 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { Resend } from "npm:resend"; // Using Resend npm package
-import { getAllowedCorsHeaders } from "../_shared/cors.ts"; // Import shared CORS handler
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2"; // Import Supabase client
+import { Resend } from "npm:resend";
+import { getAllowedCorsHeaders } from "../_shared/cors.ts";
 
-// Initialize Resend with API key from environment variables (Supabase secrets)
-const resend = new Resend(Deno.env.get("RESEND_API_KEY")!);
-const adminEmail = Deno.env.get("ADMIN_EMAIL_ADDRESS")!;
-const fromEmail = Deno.env.get("FROM_EMAIL_ADDRESS")!; // Email address verified with Resend
+// --- Environment Variables ---
+const supabaseUrl = Deno.env.get("SUPABASE_URL");
+const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const resendApiKey = Deno.env.get("RESEND_API_KEY");
+const adminEmail = Deno.env.get("ADMIN_EMAIL_ADDRESS"); // Keep for potential future use
+const fromEmail = Deno.env.get("FROM_EMAIL_ADDRESS");
+
+// --- Initialize Clients ---
+let supabaseAdmin: SupabaseClient | null = null;
+if (supabaseUrl && supabaseServiceRoleKey) {
+  supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+} else {
+  console.error("Missing Supabase URL or Service Role Key environment variables.");
+}
+
+let resend: Resend | null = null;
+if (resendApiKey) {
+  resend = new Resend(resendApiKey);
+} else {
+   console.error("Missing RESEND_API_KEY environment variable.");
+}
 
 // Define the expected request body structure
 interface QuoteRequestData {
@@ -15,6 +33,9 @@ interface QuoteRequestData {
   phone?: string;
   documentPaths?: string[];
   submittedAt: string;
+  // Add optional language fields
+  languageFrom?: string;
+  languageTo?: string;
 }
 
 serve(async (req) => {
@@ -27,10 +48,21 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // --- Check Initialization ---
+   if (!supabaseAdmin || !resend || !fromEmail) {
+    console.error("Missing environment variables (Supabase, Resend, or From Email). Function cannot proceed.");
+    return new Response(JSON.stringify({ error: "Server configuration error." }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500,
+    });
+  }
+
+
   try {
     // 2. Parse request body
     const requestData = (await req.json()) as QuoteRequestData;
 
+    // Validate required fields
     if (!requestData.email || !requestData.name || !requestData.service) {
       return new Response(JSON.stringify({ error: "Missing required fields (service, name, email)" }), {
         status: 400,
@@ -39,7 +71,48 @@ serve(async (req) => {
       });
     }
 
-    // 3. Construct Email Content
+     // 3. Insert data into the 'quotes' table
+     console.log("Preparing to insert quote data:", {
+        name: requestData.name,
+        email: requestData.email,
+        phone: requestData.phone,
+        service: requestData.service,
+        language_from: requestData.languageFrom,
+        language_to: requestData.languageTo,
+        document_paths: requestData.documentPaths,
+     });
+     const { data: insertData, error: insertError } = await supabaseAdmin
+        .from('quotes')
+        .insert([
+          {
+            name: requestData.name,
+            email: requestData.email,
+            phone: requestData.phone,
+            service: requestData.service,
+            language_from: requestData.languageFrom, // Use snake_case for DB
+            language_to: requestData.languageTo,     // Use snake_case for DB
+            document_paths: requestData.documentPaths,
+            // status: 'new', // Default status is set in the table definition
+            // created_at is set automatically
+          },
+        ])
+        .select() // Optionally select the inserted data if needed
+        .single(); // Assuming you insert one quote at a time
+
+      if (insertError) {
+        console.error("!!! Database Insert Error:", insertError); // Make error more prominent
+        // Log the data that failed to insert
+        console.error("!!! Failed to insert data:", {
+            name: requestData.name, email: requestData.email, phone: requestData.phone, service: requestData.service,
+            language_from: requestData.languageFrom, language_to: requestData.languageTo, document_paths: requestData.documentPaths
+        });
+        throw new Error(`Database insert error: ${insertError.message}`);
+      }
+
+      console.log("+++ Quote data inserted successfully. Inserted row:", insertData); // Log success and inserted data
+
+
+    // 4. Construct Email Content
     const userSubject = "Quote Request Confirmation - CreditEval";
     const userHtmlBody = `
       <h1>Thank you for your quote request, ${requestData.name}!</h1>
@@ -66,6 +139,8 @@ serve(async (req) => {
         <li>Name: ${requestData.name}</li>
         <li>Email: ${requestData.email}</li>
         ${requestData.phone ? `<li>Phone: ${requestData.phone}</li>` : ""}
+        ${requestData.languageFrom ? `<li>Language From: ${requestData.languageFrom}</li>` : ""}
+        ${requestData.languageTo ? `<li>Language To: ${requestData.languageTo}</li>` : ""}
         <li>Submitted At: ${new Date(requestData.submittedAt).toLocaleString()}</li>
       </ul>
       ${requestData.documentPaths && requestData.documentPaths.length > 0
@@ -77,7 +152,7 @@ serve(async (req) => {
       <p>Please follow up with the client.</p>
     `;
 
-    // 4. Send Emails using Resend
+    // 5. Send Emails using Resend
     const sendUserEmail = resend.emails.send({
       from: fromEmail,
       to: requestData.email,
@@ -120,8 +195,8 @@ serve(async (req) => {
      }
 
 
-    // 5. Return success response
-    return new Response(JSON.stringify({ message: "Quote request processed and emails sent." }), {
+    // 6. Return success response
+    return new Response(JSON.stringify({ message: "Quote request submitted, saved, and emails sent." }), {
       // Include dynamic CORS headers in success response
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "./ui/button";
-import { ChevronDown, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react"; // Removed ChevronDown
+import { SolutionsDropdown } from "./SolutionsDropdown"; // Import the new dropdown
 
 const Header = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -25,45 +26,9 @@ const Header = () => {
 
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center space-x-6 text-sm font-medium">
-          <Link to="/" className="hover:text-primary">
-            Home
-          </Link>
-          {/* Desktop Services Dropdown */}
-          <div className="relative group">
-            <button className="hover:text-primary flex items-center gap-1">
-              Services
-              <ChevronDown className="h-4 w-4 transition-transform duration-200 group-hover:rotate-180" />
-            </button>
-            {/* Dropdown Menu */}
-            <div className="absolute left-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50">
-              <div className="py-1" role="menu" aria-orientation="vertical">
-                <Link
-                  to="/evaluation"
-                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                  role="menuitem"
-                  onClick={closeMobileMenu} // Close menu on click (good practice even for desktop)
-                >
-                  Credential Evaluations
-                </Link>
-                <Link
-                  to="/translation"
-                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                  role="menuitem"
-                  onClick={closeMobileMenu}
-                >
-                  Certified Translations
-                </Link>
-                <Link
-                  to="/expert-opinion"
-                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                  role="menuitem"
-                  onClick={closeMobileMenu}
-                >
-                  Expert Opinion Letters
-                </Link>
-              </div>
-            </div>
-          </div>
+          {/* Home link removed */}
+          {/* Replace old dropdown with new component */}
+          <SolutionsDropdown />
           <Link to="/about" className="hover:text-primary">
             About Us
           </Link>
@@ -72,6 +37,9 @@ const Header = () => {
           </Link>
           <Link to="/contact" className="hover:text-primary">
             Contact
+          </Link>
+          <Link to="/faq" className="hover:text-primary">
+            FAQ
           </Link>
         </nav>
 
@@ -154,6 +122,13 @@ const Header = () => {
               onClick={closeMobileMenu}
             >
               Contact
+            </Link>
+            <Link
+              to="/faq"
+              className="block py-2 text-base font-medium hover:text-primary"
+              onClick={closeMobileMenu}
+            >
+              FAQ
             </Link>
           </nav>
         )}

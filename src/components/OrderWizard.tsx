@@ -38,6 +38,9 @@ import {
   Globe,
   DollarSign,
   User as UserIcon,
+  ShieldCheck, // Added for social proof
+  Lock,        // Added for social proof
+  Award,       // Added for social proof
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 
@@ -53,6 +56,30 @@ type DocumentState = {
   path?: string;
   progress?: number;
 };
+
+// Define the main OrderData interface
+interface OrderData {
+  customerInfo: {
+    email: string;
+    firstName: string;
+    lastName: string;
+  };
+  documents: DocumentState[];
+  services: {
+    type: string; // Consider using a specific type like ServiceType if defined elsewhere
+    languageFrom: string;
+    languageTo: string;
+    pageCount: number;
+    evaluationType: string; // Consider EvaluationType
+    visaType: string;
+    urgency: string; // Consider UrgencyType
+    specialInstructions: string;
+  };
+  payment: {
+    method: string;
+  };
+}
+
 
 interface OrderWizardProps {
   onComplete?: (orderData: any) => void;
@@ -74,8 +101,9 @@ const OrderWizard = ({
   const elements = useElements();
   const navigate = useNavigate(); // Add navigate hook
 
-  const [orderData, setOrderData] = useState({
-    customerInfo: { // Renamed from account
+  // Explicitly type the state with OrderData
+  const [orderData, setOrderData] = useState<OrderData>({
+    customerInfo: {
       email: "",
       firstName: "",
       lastName: "",
@@ -133,8 +161,11 @@ const OrderWizard = ({
   };
   // --- End Calculate Price Function ---
 
-  const handleNext = async () => { // Make async
+  const handleNext = async () => {
     setError(null); // Clear previous errors
+
+    // Log state values at the beginning of handleNext
+    console.log(`handleNext called: currentStep=${currentStep}, totalSteps=${totalSteps}, stripe=${!!stripe}, elements=${!!elements}`);
 
     // --- Save Customer Info on Step 0 ---
     if (currentStep === 0) {
@@ -185,6 +216,7 @@ const OrderWizard = ({
       // --- Final Step: Payment Processing ---
       setPaymentProcessing(true);
       setError(null);
+      console.log(`Entering final step payment block. Stripe ready: ${!!stripe}, Elements ready: ${!!elements}`); // ADDED LOG HERE
 
       const cardElement = elements.getElement(CardElement);
       if (!cardElement) {
@@ -194,9 +226,28 @@ const OrderWizard = ({
       }
 
       try {
+        // --- 0. Update Order with final details before payment ---
+        const calculatedAmount = Math.round(calculatePrice(orderData) * 100); // Calculate amount in cents
+        console.log(`Attempting to update order ${orderId} status and services (amount updated in function):`, orderData.services); // Log data being sent
+        // Remove total_amount update from client-side - let the function handle it
+        const { error: updateError } = await supabase
+          .from('orders')
+          .update({
+            // total_amount: calculatedAmount, // REMOVED - Handled by create-payment-intent function
+            services: orderData.services, // Assuming 'services' column is JSONB
+            status: 'pending_payment' // Update status before payment attempt
+           })
+          .eq('id', orderId);
+
+        if (updateError) {
+          console.error("!!! Error updating order before payment:", updateError); // Make error prominent
+          throw new Error(`Failed to update order details: ${updateError.message}`);
+        }
+        console.log(`+++ Order ${orderId} updated successfully before payment.`); // Make success prominent
+
         // --- 1. Create PaymentIntent on Backend ---
         const functionUrl = "https://lholxkbtosixszauuzmb.supabase.co/functions/v1/create-payment-intent";
-        const calculatedAmount = Math.round(calculatePrice(orderData) * 100); // Calculate amount in cents
+        // const calculatedAmount = Math.round(calculatePrice(orderData) * 100); // Amount already calculated above
 
         console.log(`Calling Supabase function at ${functionUrl} for order ${orderId} with amount ${calculatedAmount}`);
 
@@ -265,10 +316,11 @@ const OrderWizard = ({
           if (orderId) {
             console.log(`Attempting to send receipt email for order ${orderId}`);
             // Call the function asynchronously. Don't block navigation on email success/failure.
-            // No session/Authorization needed since verify_jwt = false for this function.
-            fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-order-receipt`, {
-              method: 'POST',
-              headers: {
+                // No session/Authorization needed since verify_jwt = false for this function.
+                console.log(`[Debug] Preparing to call send-order-receipt. Order ID: ${orderId}, Type: ${typeof orderId}`); // ADDED LOG
+                fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-order-receipt`, {
+                  method: 'POST',
+                  headers: {
                 'Content-Type': 'application/json',
                 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY, // Still need anon key for gateway
                 // 'Authorization' header removed
@@ -328,11 +380,15 @@ const OrderWizard = ({
     }
   };
 
-  const updateOrderData = (section: string, data: any) => {
-    setOrderData({
-      ...orderData,
-      [section]: { ...orderData[section as keyof typeof orderData], ...data },
-    });
+  // Corrected updateOrderData to handle different section types properly
+  const updateOrderData = (section: keyof OrderData, data: Partial<OrderData[keyof OrderData]>) => {
+    setOrderData(prev => ({
+      ...prev,
+      [section]: {
+        ...(prev[section] as object), // Type assertion needed here
+        ...data
+      },
+    }));
   };
 
   const steps = [
@@ -343,9 +399,31 @@ const OrderWizard = ({
     { title: "Payment", icon: <DollarSign className="h-5 w-5" /> },
   ];
 
+  // Social Proof Content
+  const socialProofItems = [
+    {
+      icon: Award,
+      title: "100% Acceptance",
+      text: "Our translations & evaluations meet the requirements for certified translation acceptance — it's guaranteed.",
+    },
+    {
+      icon: Lock,
+      title: "Secure & Private",
+      text: "Your documents are securely stored and only transmitted via encrypted means.",
+    },
+    {
+      icon: ShieldCheck,
+      title: "Professionally Translated & Evaluated",
+      text: "Your certified translation and academic evaluations will be completed by a professional translator in combination with an expert evaluator.",
+    },
+  ];
+
+
   return (
-    <div className="w-full max-w-4xl mx-auto p-4 bg-white">
-      <Card>
+    // Use a grid layout for larger screens
+    <div className="container mx-auto py-12 px-4 grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-12">
+      {/* Wizard Card takes 2 columns on medium+ screens */}
+      <Card className="md:col-span-2">
         <CardHeader>
           <CardTitle className="text-2xl font-bold text-center text-primary">
             Order Your Service
@@ -387,6 +465,7 @@ const OrderWizard = ({
               {currentStep === 0 && (
                 <CustomerInfoStep
                   data={orderData.customerInfo}
+                  // Corrected section key to "customerInfo"
                   updateData={(data) => updateOrderData("customerInfo", data)}
                   error={error}
                 />
@@ -430,7 +509,12 @@ const OrderWizard = ({
             <ArrowLeft className="mr-2 h-4 w-4" /> Back
           </Button>
 
-          <Button onClick={handleNext} disabled={(isSubmitting && currentStep === 0) || paymentProcessing}>
+          {/* Disable button on last step if stripe or elements are not ready */}
+          <Button onClick={handleNext} disabled={
+            (isSubmitting && currentStep === 0) ||
+            paymentProcessing ||
+            (currentStep === totalSteps - 1 && (!stripe || !elements))
+          }>
             {isSubmitting && currentStep === 0 ? "Saving..." :
              paymentProcessing ? "Processing Payment..." :
              currentStep === totalSteps - 1 ? "Complete Order" : "Next"}
@@ -440,6 +524,20 @@ const OrderWizard = ({
           </Button>
         </CardFooter>
       </Card>
+
+      {/* Social Proof Section - takes 1 column on medium+ screens */}
+      <div className="md:col-span-1 space-y-6 mt-8 md:mt-0">
+        <h3 className="text-xl font-semibold text-center md:text-left">Why Choose CreditEval?</h3>
+        {socialProofItems.map((item, index) => (
+          <div key={index} className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+            <item.icon className="h-8 w-8 text-primary flex-shrink-0 mt-1" />
+            <div>
+              <h4 className="font-medium">{item.title}</h4>
+              <p className="text-sm text-muted-foreground">{item.text}</p>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };

@@ -1,7 +1,9 @@
-import React from "react";
-import { Link } from "react-router-dom";
+import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom"; // Import useNavigate
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { supabase } from "../lib/supabaseClient"; // Import Supabase client
+import { useToast } from "./ui/use-toast"; // Import useToast
 import { Textarea } from "./ui/textarea";
 import { Label } from "./ui/label";
 import { Separator } from "./ui/separator";
@@ -16,6 +18,72 @@ import {
 import { MapPin, Phone, Mail, Clock, MessageSquare } from "lucide-react";
 
 const ContactUs = () => {
+  const navigate = useNavigate(); // Initialize navigate
+  const { toast } = useToast(); // Initialize toast
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    inquiryType: "",
+    message: "",
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { id, value } = e.target;
+    setFormData((prevData) => ({
+      ...prevData,
+      [id]: value,
+    }));
+  };
+
+  // Handle Select change specifically
+  const handleSelectChange = (value: string) => {
+    setFormData((prevData) => ({
+      ...prevData,
+      inquiryType: value,
+    }));
+  };
+
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('send-contact-inquiry', {
+        body: formData,
+      });
+
+      if (error) throw error;
+
+      console.log('Supabase function response:', data);
+      // Redirect to success page instead of showing toast
+      navigate('/contact-success');
+
+      // Optionally reset form (might not be necessary if redirecting)
+      /* setFormData({
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: "",
+        inquiryType: "",
+        message: "",
+      }); */
+    } catch (error: any) {
+      console.error("Error sending contact form:", error);
+      toast({
+        title: "Error Sending Message",
+        description: `There was a problem sending your message: ${error.message || 'Please try again later.'}`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+
   return (
     <div className="bg-white">
       {/* Header with navigation is in the Home component */}
@@ -56,9 +124,9 @@ const ContactUs = () => {
                   <div>
                     <h3 className="font-medium">Our Office</h3>
                     <p className="text-gray-600">
-                      123 Main Street, Suite 456
+                      21750 Hardy Oak Blvd Ste 104
                       <br />
-                      New York, NY 10001
+                      Texas 78258
                       <br />
                       United States
                     </p>
@@ -72,9 +140,7 @@ const ContactUs = () => {
                   <div>
                     <h3 className="font-medium">Phone</h3>
                     <p className="text-gray-600">
-                      +1 (123) 456-7890
-                      <br />
-                      Toll-free: 1-800-123-4567
+                      801-335-4567
                     </p>
                   </div>
                 </div>
@@ -86,8 +152,6 @@ const ContactUs = () => {
                   <div>
                     <h3 className="font-medium">Email</h3>
                     <p className="text-gray-600">
-                      info@crediteval.com
-                      <br />
                       support@crediteval.com
                     </p>
                   </div>
@@ -174,15 +238,15 @@ const ContactUs = () => {
                     <h2 className="text-2xl font-bold">Send Us a Message</h2>
                   </div>
 
-                  <form className="space-y-4">
+                  <form className="space-y-4" onSubmit={handleSubmit}>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="first-name">First Name</Label>
-                        <Input id="first-name" placeholder="John" />
+                        <Label htmlFor="firstName">First Name</Label>
+                        <Input id="firstName" placeholder="John" value={formData.firstName} onChange={handleChange} required />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="last-name">Last Name</Label>
-                        <Input id="last-name" placeholder="Doe" />
+                        <Label htmlFor="lastName">Last Name</Label>
+                        <Input id="lastName" placeholder="Doe" value={formData.lastName} onChange={handleChange} required />
                       </div>
                     </div>
 
@@ -192,18 +256,21 @@ const ContactUs = () => {
                         id="email"
                         type="email"
                         placeholder="john@example.com"
+                        value={formData.email}
+                        onChange={handleChange}
+                        required
                       />
                     </div>
 
                     <div className="space-y-2">
                       <Label htmlFor="phone">Phone (Optional)</Label>
-                      <Input id="phone" placeholder="(123) 456-7890" />
+                      <Input id="phone" placeholder="(123) 456-7890" value={formData.phone} onChange={handleChange} />
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="inquiry-type">Inquiry Type</Label>
-                      <Select>
-                        <SelectTrigger id="inquiry-type">
+                      <Label htmlFor="inquiryType">Inquiry Type</Label>
+                      <Select onValueChange={handleSelectChange} value={formData.inquiryType} required>
+                        <SelectTrigger id="inquiryType">
                           <SelectValue placeholder="Select inquiry type" />
                         </SelectTrigger>
                         <SelectContent>
@@ -232,14 +299,18 @@ const ContactUs = () => {
                         id="message"
                         placeholder="Please provide details about your inquiry..."
                         rows={5}
+                        value={formData.message}
+                        onChange={handleChange}
+                        required
                       />
                     </div>
 
                     <Button
                       type="submit"
                       className="w-full bg-primary hover:bg-primary/90"
+                      disabled={isSubmitting}
                     >
-                      Send Message
+                      {isSubmitting ? 'Sending...' : 'Send Message'}
                     </Button>
                   </form>
                 </CardContent>
@@ -262,14 +333,15 @@ const ContactUs = () => {
 
           <div className="bg-white p-4 rounded-lg shadow-sm">
             {/* This would be a real map in a production environment */}
+            {/* TODO: Integrate a real map component here, e.g., Google Maps or Mapbox */}
             <div className="bg-gray-200 h-96 rounded-lg flex items-center justify-center">
               <div className="text-center">
                 <MapPin className="h-12 w-12 text-primary mx-auto mb-4" />
                 <p className="font-medium">
-                  123 Main Street, Suite 456, New York, NY 10001
+                  21750 Hardy Oak Blvd Ste 104, Texas 78258
                 </p>
                 <p className="text-sm text-gray-600 mt-2">
-                  Interactive map would be displayed here
+                  Map data placeholder
                 </p>
               </div>
             </div>

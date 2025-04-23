@@ -3,8 +3,15 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "./ui/card";
-import { Upload, FileText, ArrowLeft, Check } from "lucide-react"; // Added Check
+import { Upload, FileText, ArrowLeft, Check, Languages } from "lucide-react"; // Added Check, Languages
 import { supabase } from "../lib/supabaseClient"; // Assuming you might need Supabase later for uploads/submissions
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select"; // Import Select components
 
 // Define the document type explicitly for clarity (similar to OrderWizard)
 type DocumentState = {
@@ -28,6 +35,8 @@ const QuotePage = () => {
     name: "",
     email: "",
     phone: "",
+    languageFrom: "", // Add language state
+    languageTo: "",   // Add language state
   });
   const [documents, setDocuments] = useState<DocumentState[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -46,6 +55,14 @@ const QuotePage = () => {
     setFormData((prevData) => ({
       ...prevData,
       [id]: value,
+    }));
+  };
+
+  // Handle language select changes
+  const handleLanguageChange = (field: 'languageFrom' | 'languageTo', value: string) => {
+    setFormData((prevData) => ({
+      ...prevData,
+      [field]: value,
     }));
   };
 
@@ -222,7 +239,20 @@ const QuotePage = () => {
       // Include paths of successfully uploaded documents
       documentPaths: successfullyUploadedFiles.map(doc => doc.path),
       submittedAt: new Date().toISOString(),
+      // Conditionally add language info
+      ...(selectedService === "Certified Translation" && {
+        languageFrom: formData.languageFrom,
+        languageTo: formData.languageTo,
+      }),
     };
+
+    // Add validation for languages if translation is selected
+    if (selectedService === "Certified Translation" && (!formData.languageFrom || !formData.languageTo)) {
+        setSubmitError("Please select both 'Language From' and 'Language To'.");
+        setIsSubmitting(false);
+        return;
+    }
+
 
     console.log("Submitting Quote Request:", quoteRequestData);
 
@@ -262,8 +292,8 @@ const QuotePage = () => {
     setStep(1);
     setSelectedService(null);
     // Optionally clear form data and documents
-    // setFormData({ name: "", email: "", phone: "" });
-    // setDocuments([]);
+    setFormData({ name: "", email: "", phone: "", languageFrom: "", languageTo: "" }); // Reset languages too
+    setDocuments([]);
     setSubmitStatus('idle');
     setSubmitError(null);
   };
@@ -293,7 +323,7 @@ const QuotePage = () => {
                 <Check className="h-16 w-16 text-green-500 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold mb-2">Quote Request Submitted!</h3>
                 <p className="text-muted-foreground">Thank you for your request. We will get back to you shortly.</p>
-                <Button onClick={() => { setStep(1); setSelectedService(null); setSubmitStatus('idle'); setFormData({ name: "", email: "", phone: "" }); setDocuments([]); }} className="mt-6">
+                <Button onClick={() => { setStep(1); setSelectedService(null); setSubmitStatus('idle'); setFormData({ name: "", email: "", phone: "", languageFrom: "", languageTo: "" }); setDocuments([]); }} className="mt-6">
                     Request Another Quote
                 </Button>
             </div>
@@ -356,6 +386,66 @@ const QuotePage = () => {
                       disabled={isSubmitting}
                     />
                   </div>
+
+                  {/* Conditionally render Language Selects for Certified Translation */}
+                  {selectedService === "Certified Translation" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="languageFrom">Language From</Label>
+                        <Select
+                          value={formData.languageFrom}
+                          onValueChange={(value) => handleLanguageChange('languageFrom', value)}
+                          required
+                          disabled={isSubmitting}
+                        >
+                          <SelectTrigger id="languageFrom">
+                            <SelectValue placeholder="Select source language" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {/* Add common languages - expand as needed */}
+                            <SelectItem value="English">English</SelectItem>
+                            <SelectItem value="Spanish">Spanish</SelectItem>
+                            <SelectItem value="French">French</SelectItem>
+                            <SelectItem value="German">German</SelectItem>
+                            <SelectItem value="Portuguese">Portuguese</SelectItem>
+                            <SelectItem value="Italian">Italian</SelectItem>
+                            <SelectItem value="Russian">Russian</SelectItem>
+                            <SelectItem value="Chinese">Chinese (Simplified)</SelectItem>
+                            <SelectItem value="Japanese">Japanese</SelectItem>
+                            <SelectItem value="Arabic">Arabic</SelectItem>
+                            <SelectItem value="Other">Other (Specify in Notes if needed)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="languageTo">Language To</Label>
+                         <Select
+                          value={formData.languageTo}
+                          onValueChange={(value) => handleLanguageChange('languageTo', value)}
+                          required
+                          disabled={isSubmitting}
+                        >
+                          <SelectTrigger id="languageTo">
+                            <SelectValue placeholder="Select target language" />
+                          </SelectTrigger>
+                          <SelectContent>
+                             {/* Add common languages - expand as needed */}
+                            <SelectItem value="English">English</SelectItem>
+                            <SelectItem value="Spanish">Spanish</SelectItem>
+                            <SelectItem value="French">French</SelectItem>
+                            <SelectItem value="German">German</SelectItem>
+                            <SelectItem value="Portuguese">Portuguese</SelectItem>
+                            <SelectItem value="Italian">Italian</SelectItem>
+                            <SelectItem value="Russian">Russian</SelectItem>
+                            <SelectItem value="Chinese">Chinese (Simplified)</SelectItem>
+                            <SelectItem value="Japanese">Japanese</SelectItem>
+                            <SelectItem value="Arabic">Arabic</SelectItem>
+                             <SelectItem value="Other">Other (Specify in Notes if needed)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
 
                   {/* File Upload Section */}
                   <div className="space-y-2">

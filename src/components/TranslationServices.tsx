@@ -33,6 +33,9 @@ const TranslationServices = () => {
               <Button asChild className="bg-primary hover:bg-primary/90">
                 <Link to="/order-wizard">Start Your Order</Link>
               </Button>
+              <Button asChild variant="outline" className="border-primary text-primary hover:bg-primary/10">
+                <Link to="/quote">Get a Quote</Link>
+              </Button>
             </div>
           </div>
         </div>

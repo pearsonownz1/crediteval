@@ -460,19 +460,7 @@ const Home = () => {
                   easier. Their course-by-course evaluation was accepted without
                   question, and their customer service was excellent."
                 </p>
-                <div className="flex items-center gap-4">
-                  <Avatar>
-                    <AvatarImage
-                      src="https://api.dicebear.com/7.x/avataaars/svg?seed=Maria"
-                      alt="Maria S."
-                    />
-                    <AvatarFallback>MS</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-medium">Maria S.</p>
-                    <p className="text-sm text-gray-500">University Student</p>
-                  </div>
-                </div>
+                {/* Avatar section removed */}
               </CardContent>
             </Card>
 
@@ -495,21 +483,7 @@ const Home = () => {
                   application, and CreditEval delivered them quickly and
                   accurately. USCIS accepted them without any issues."
                 </p>
-                <div className="flex items-center gap-4">
-                  <Avatar>
-                    <AvatarImage
-                      src="https://api.dicebear.com/7.x/avataaars/svg?seed=James"
-                      alt="James T."
-                    />
-                    <AvatarFallback>JT</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-medium">James T.</p>
-                    <p className="text-sm text-gray-500">
-                      Immigration Applicant
-                    </p>
-                  </div>
-                </div>
+                {/* Avatar section removed */}
               </CardContent>
             </Card>
 
@@ -532,21 +506,7 @@ const Home = () => {
                   my credentials. CreditEval's professional licensing evaluation
                   was thorough and helped me secure my certification."
                 </p>
-                <div className="flex items-center gap-4">
-                  <Avatar>
-                    <AvatarImage
-                      src="https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah"
-                      alt="Sarah K."
-                    />
-                    <AvatarFallback>SK</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-medium">Sarah K.</p>
-                    <p className="text-sm text-gray-500">
-                      Healthcare Professional
-                    </p>
-                  </div>
-                </div>
+                {/* Avatar section removed */}
               </CardContent>
             </Card>
           </div>

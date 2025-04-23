@@ -41,23 +41,44 @@ serve(async (req) => {
   }
 
   try {
-    const { orderId } = await req.json();
-
-    if (!orderId || typeof orderId !== 'string') {
-      throw new Error("Invalid or missing orderId provided.");
+    console.log("[Debug] Attempting to parse request body..."); // Log before parsing
+    let requestBody;
+    try {
+        requestBody = await req.json(); // Parse the body first
+        console.log("[Debug] Successfully parsed request body:", JSON.stringify(requestBody, null, 2)); // Log the parsed body
+    } catch (parseError) {
+        console.error("[Critical] Failed to parse request body:", parseError);
+        // Return an error immediately if parsing fails
+        return new Response(JSON.stringify({ error: "Invalid request body format." }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 400, // Bad Request
+        });
     }
 
-    console.log(`Fetching details for order ID: ${orderId}`);
+    let { orderId } = requestBody; // Destructure AFTER logging and successful parsing
+
+    // Validate orderId: Allow number or string, but ensure it exists
+    if (orderId === null || orderId === undefined || orderId === '') {
+        console.error(`[Debug] orderId validation failed: Missing or empty. Value: ${orderId}`);
+        throw new Error("Missing orderId provided.");
+    }
+
+    // Convert to string if it's a number, for consistency
+    const orderIdString = String(orderId);
+    console.log(`Validated orderId: ${orderIdString} (Original type: ${typeof orderId})`);
+
+
+    console.log(`Fetching details for order ID: ${orderIdString}`);
 
     // --- Fetch Order Details ---
     const { data: orderData, error: fetchError } = await supabaseAdmin
       .from('orders')
       .select('id, first_name, last_name, email, services, total_amount, created_at') // Adjust columns as needed
-      .eq('id', orderId)
+      .eq('id', orderIdString) // Use the string version for the query
       .single();
 
     if (fetchError || !orderData) {
-      console.error(`Error fetching order ${orderId}:`, fetchError);
+      console.error(`Error fetching order ${orderIdString}:`, fetchError);
       throw new Error(`Order not found or failed to fetch: ${fetchError?.message || 'No data'}`);
     }
 
@@ -85,7 +106,7 @@ serve(async (req) => {
     // const bodyHtml = `<strong>Hi ${customerName || 'Customer'}</strong>, <p>Thank you...</p>`;
 
     // --- Send Email via Resend ---
-    console.log(`Sending receipt email to ${orderData.email}`);
+    console.log(`Sending receipt email to ${orderData.email} for order ${orderIdString}`); // Log orderIdString
     const { data: emailData, error: emailError } = await resend.emails.send({
       from: `CreditEval <${fromEmail}>`,
       to: [orderData.email], // Send to customer's email
@@ -96,13 +117,13 @@ serve(async (req) => {
     });
 
     if (emailError) {
-      console.error(`Resend error sending email for order ${orderId}:`, emailError);
+      console.error(`Resend error sending email for order ${orderIdString}:`, emailError); // Log orderIdString
       // Log the error but maybe don't fail the whole function call?
       // Or return a specific error indicating email failure.
       // For now, we'll return success but log the error.
       // throw new Error(`Failed to send receipt email: ${emailError.message}`);
     } else {
-      console.log(`Receipt email sent successfully for order ${orderId}. Email ID: ${emailData?.id}`);
+      console.log(`Receipt email sent successfully for order ${orderIdString}. Email ID: ${emailData?.id}`); // Log orderIdString
     }
 
     // --- Respond Success ---
