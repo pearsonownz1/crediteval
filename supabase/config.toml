@@ -330,3 +330,15 @@ verify_jwt = false
 verify_jwt = false
 import_map = "./functions/send-order-receipt/deno.json"
 # entrypoint = "./functions/send-order-receipt/index.ts" # Optional: Specify if not default
+
+[functions.send-quote-email]
+# Allow authenticated users (staff) to trigger this? Or keep verify_jwt=false if called server-side?
+# For now, assuming it might be called from frontend after quote creation.
+verify_jwt = false # Adjust based on how you trigger it
+import_map = "./functions/send-quote-email/deno.json"
+entrypoint = "./functions/send-quote-email/index.ts"
+
+[functions.stripe-webhook]
+verify_jwt = false # Webhooks are typically public but verified by signature
+# import_map = "./functions/stripe-webhook/deno.json" # Optional: Add if needed
+entrypoint = "./functions/stripe-webhook/index.ts"

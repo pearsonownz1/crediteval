@@ -27,6 +27,8 @@ import {
   // Removed ChevronDown import
 } from "lucide-react";
 import TestimonialCarousel from "./TestimonialCarousel"; // Import the carousel component
+import LiveSocialProof from "./LiveSocialProof"; // Import the new component
+// Ensure DegreeEvaluationCarousel import is removed
 
 const Home = () => {
   return (
@@ -71,24 +73,14 @@ const Home = () => {
                 <span>Secure Process</span>
               </div>
             </motion.div>
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              className="relative hidden md:block"
-            >
-              <img
-                src="https://images.unsplash.com/photo-1568992687947-868a62a9f521?w=800&q=80"
-                alt="Document Translation and Evaluation"
-                className="rounded-lg shadow-xl"
-              />
-              <div className="absolute -bottom-6 -left-6 bg-white p-4 rounded-lg shadow-lg">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-primary" />
-                  <span className="font-medium">Fast 24-48 Hour Service</span>
-                </div>
-              </div>
-            </motion.div>
+            {/* Use the static hero.png image */}
+            <div className="relative hidden md:flex justify-center items-center">
+               <img
+                 src="/hero.png"
+                 alt="Hero Image"
+                 className="rounded-xl shadow-lg w-full max-w-lg" // Adjusted max-width
+               />
+            </div>
           </div>
         </div>
       </section>
@@ -589,6 +581,11 @@ const Home = () => {
       </section>
 
       {/* Footer removed - Handled by Layout component */}
+
+      {/* Live Social Proof Popup */}
+      <div className="fixed bottom-4 left-4 z-50">
+        <LiveSocialProof />
+      </div>
     </div>
   );
 };

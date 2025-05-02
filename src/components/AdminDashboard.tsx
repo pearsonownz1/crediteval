@@ -53,7 +53,9 @@ import {
   FileQuestion, // Icon for Quotes
   Settings, // Icon for Settings
   Users as UsersIcon, // Icon for Clients (alias to avoid conflict)
+  PlusCircle, // Icon for Create Quote
 } from "lucide-react";
+import { CreateQuoteForm } from "./CreateQuoteForm"; // Import the new form
 
 // Define types
 type Order = any; // Keep flexible for now
@@ -62,7 +64,8 @@ type Quote = any; // Define Quote type similarly
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [activeView, setActiveView] = useState<'orders' | 'quotes' | 'clients' | 'settings'>('orders');
+  // Add 'create-quote' to the possible views
+  const [activeView, setActiveView] = useState<'orders' | 'quotes' | 'clients' | 'settings' | 'create-quote'>('orders');
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -118,10 +121,10 @@ const AdminDashboard = () => {
     try {
       console.log("Executing Supabase query for quotes..."); // Log before query
       // *** ASSUMPTION: Table name is 'quotes' ***
-      // Use correct snake_case column names in select
+      // Select only columns that exist in the corrected quotes table schema
       const { data, error: fetchError } = await supabase
         .from('quotes')
-        .select('id, name, email, phone, service, language_from, language_to, document_paths, created_at')
+        .select('id, name, email, service_type, price, status, created_at, expires_at, staff_id') // Removed phone, corrected columns
         .order('created_at', { ascending: false });
 
       console.log("Supabase query finished. Error:", fetchError, "Data:", data); // Log result
@@ -144,7 +147,8 @@ const AdminDashboard = () => {
   // --- Effects ---
   useEffect(() => {
     const hash = location.hash.substring(1) || 'orders';
-    const validViews = ['orders', 'quotes', 'clients', 'settings'];
+    // Add 'create-quote' to valid views
+    const validViews = ['orders', 'quotes', 'clients', 'settings', 'create-quote'];
     const initialView = validViews.includes(hash) ? hash : 'orders';
     setActiveView(initialView as any);
 
@@ -339,6 +343,14 @@ const AdminDashboard = () => {
           >
             <Settings className="mr-3 h-5 w-5" /> Settings
           </Link>
+          {/* Add Create Quote Link */}
+          <Link
+            to="#create-quote"
+            onClick={() => setActiveView('create-quote')}
+            className={`flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700 ${activeView === 'create-quote' ? 'bg-gray-900 text-white' : 'text-gray-300'}`}
+          >
+            <PlusCircle className="mr-3 h-5 w-5" /> Create Quote
+          </Link>
         </nav>
         <div className="p-4 border-t border-gray-700">
           <Button variant="ghost" className="w-full justify-start text-gray-300 hover:bg-gray-700 hover:text-white" onClick={handleLogout}>
@@ -355,6 +367,7 @@ const AdminDashboard = () => {
             {activeView === 'quotes' && 'Quote Management'}
             {activeView === 'clients' && 'Client Management'}
             {activeView === 'settings' && 'Settings'}
+            {activeView === 'create-quote' && 'Create New Quote'} {/* Add title for new view */}
           </h1>
         </header>
 
@@ -389,8 +402,9 @@ const AdminDashboard = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[40px]"><Checkbox checked={selectedOrderRowKeys.length === orders.length && orders.length > 0 ? true : selectedOrderRowKeys.length > 0 ? 'indeterminate' : false} onCheckedChange={handleSelectAllOrders} aria-label="Select all order rows" /></TableHead>
-                    <TableHead>Order ID</TableHead><TableHead>Client</TableHead><TableHead>Status</TableHead><TableHead>Date</TableHead><TableHead>Documents</TableHead><TableHead>Price</TableHead><TableHead>Actions</TableHead>
+                    <TableHead className="w-[40px]"><Checkbox checked={selectedQuoteRowKeys.length === quotes.length && quotes.length > 0 ? true : selectedQuoteRowKeys.length > 0 ? 'indeterminate' : false} onCheckedChange={handleSelectAllQuotes} aria-label="Select all quote rows" /></TableHead>
+                    {/* Update Table Headers */}
+                    <TableHead>Quote ID</TableHead><TableHead>Client</TableHead><TableHead>Service Type</TableHead><TableHead>Status</TableHead><TableHead>Price</TableHead><TableHead>Date</TableHead><TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -462,7 +476,8 @@ const AdminDashboard = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[40px]"><Checkbox checked={selectedQuoteRowKeys.length === quotes.length && quotes.length > 0 ? true : selectedQuoteRowKeys.length > 0 ? 'indeterminate' : false} onCheckedChange={handleSelectAllQuotes} aria-label="Select all quote rows" /></TableHead>
-                    <TableHead>Quote ID</TableHead><TableHead>Client</TableHead><TableHead>Service</TableHead><TableHead>Date</TableHead><TableHead>Documents</TableHead><TableHead>Actions</TableHead>
+                    {/* Update Table Headers */}
+                    <TableHead>Quote ID</TableHead><TableHead>Client</TableHead><TableHead>Service Type</TableHead><TableHead>Status</TableHead><TableHead>Price</TableHead><TableHead>Date</TableHead><TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -471,11 +486,13 @@ const AdminDashboard = () => {
                   {!loadingQuotes && !errorQuotes && quotes.map((quote) => (
                     <TableRow key={quote.id}>
                       <TableCell onClick={(e) => e.stopPropagation()}><Checkbox checked={selectedQuoteRowKeys.includes(quote.id)} onCheckedChange={(checked) => handleSelectQuoteRow(quote.id, checked)} aria-label={`Select quote row ${quote.id}`} /></TableCell>
-                      <TableCell className="font-medium">{quote.id}</TableCell>
+                      <TableCell className="font-medium">{quote.id?.substring(0, 8)}...</TableCell> {/* Shorten ID display */}
                       <TableCell><div className="flex items-center space-x-2 cursor-pointer hover:text-primary" onClick={() => handleQuoteRowClick(quote)}><Avatar className="h-8 w-8"><AvatarFallback>{quote.name?.charAt(0)}</AvatarFallback></Avatar><div><div className="font-medium">{quote.name}</div><div className="text-xs text-gray-500">{quote.email}</div></div></div></TableCell>
-                      <TableCell>{formatServiceType(quote.service)}</TableCell>
+                      <TableCell>{formatServiceType(quote.service_type)}</TableCell> {/* Use service_type */}
+                      <TableCell><Badge className={getStatusColor(quote.status)} variant="outline">{formatStatus(quote.status)}</Badge></TableCell> {/* Add Status */}
+                      <TableCell>${Number(quote.price || 0).toFixed(2)}</TableCell> {/* Add Price */}
                       <TableCell>{new Date(quote.created_at).toLocaleDateString()}</TableCell>
-                      <TableCell>{renderDocumentLinks(quote.document_paths)}</TableCell>
+                      {/* Removed Document Links Cell */}
                       <TableCell><div className="flex space-x-1" onClick={(e) => e.stopPropagation()}>
                         <Button variant="ghost" size="icon" title="View Details" onClick={() => handleQuoteRowClick(quote)}><Info className="h-4 w-4" /></Button>
                         {/* Add other quote actions */}
@@ -494,6 +511,10 @@ const AdminDashboard = () => {
         )}
         {activeView === 'settings' && (
           <Card><CardHeader><CardTitle>Settings</CardTitle></CardHeader><CardContent><p className="text-center py-12 text-gray-500">Settings interface...</p></CardContent></Card>
+        )}
+        {/* Render CreateQuoteForm when active */}
+        {activeView === 'create-quote' && (
+           <CreateQuoteForm />
         )}
       </main>
 
@@ -549,21 +570,40 @@ const AdminDashboard = () => {
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader><DialogTitle>Quote Request Details - ID: {selectedQuote?.id}</DialogTitle><DialogDescription>Viewing details for quote requested by {selectedQuote?.name}.</DialogDescription></DialogHeader>
           <div className="grid gap-4 py-4">
+            {/* Update Quote Details Dialog */}
             <div className="grid grid-cols-[120px_1fr] items-center gap-4"><span className="text-sm font-medium text-muted-foreground">Client:</span><span className="text-sm">{selectedQuote?.name}</span></div>
             <div className="grid grid-cols-[120px_1fr] items-center gap-4"><span className="text-sm font-medium text-muted-foreground">Email:</span><span className="text-sm">{selectedQuote?.email}</span></div>
-            <div className="grid grid-cols-[120px_1fr] items-center gap-4"><span className="text-sm font-medium text-muted-foreground">Phone:</span><span className="text-sm">{selectedQuote?.phone || 'N/A'}</span></div>
-            <div className="grid grid-cols-[120px_1fr] items-center gap-4"><span className="text-sm font-medium text-muted-foreground">Requested Service:</span><span className="text-sm">{formatServiceType(selectedQuote?.service)}</span></div>
-             {/* Conditionally show language for translations - Use snake_case here too */}
-             {/* Conditionally show language for translations - Use snake_case here too */}
-             {selectedQuote?.service === 'Certified Translation' && (
-              <>
-                <div className="grid grid-cols-[120px_1fr] items-center gap-4"><span className="text-sm font-medium text-muted-foreground">Language From:</span><span className="text-sm">{selectedQuote?.language_from || 'N/A'}</span></div>
-                <div className="grid grid-cols-[120px_1fr] items-center gap-4"><span className="text-sm font-medium text-muted-foreground">Language To:</span><span className="text-sm">{selectedQuote?.language_to || 'N/A'}</span></div>
-              </>
+            <div className="grid grid-cols-[120px_1fr] items-center gap-4"><span className="text-sm font-medium text-muted-foreground">Service Type:</span><span className="text-sm">{formatServiceType(selectedQuote?.service_type)}</span></div>
+            <div className="grid grid-cols-[120px_1fr] items-center gap-4"><span className="text-sm font-medium text-muted-foreground">Price:</span><span className="text-sm">${Number(selectedQuote?.price || 0).toFixed(2)}</span></div>
+            <div className="grid grid-cols-[120px_1fr] items-center gap-4"><span className="text-sm font-medium text-muted-foreground">Status:</span><span className="text-sm">{formatStatus(selectedQuote?.status)}</span></div>
+            <div className="grid grid-cols-[120px_1fr] items-center gap-4"><span className="text-sm font-medium text-muted-foreground">Created Date:</span><span className="text-sm">{selectedQuote?.created_at ? new Date(selectedQuote.created_at).toLocaleString() : 'N/A'}</span></div>
+            {selectedQuote?.expires_at && (
+                 <div className="grid grid-cols-[120px_1fr] items-center gap-4"><span className="text-sm font-medium text-muted-foreground">Expires Date:</span><span className="text-sm">{new Date(selectedQuote.expires_at).toLocaleString()}</span></div>
             )}
-            <div className="grid grid-cols-[120px_1fr] items-center gap-4"><span className="text-sm font-medium text-muted-foreground">Submitted Date:</span><span className="text-sm">{selectedQuote?.created_at ? new Date(selectedQuote.created_at).toLocaleString() : 'N/A'}</span></div>
-            <h4 className="font-medium mt-4 border-t pt-4">Documents</h4>
-            {renderDocumentLinks(selectedQuote?.document_paths)}
+             {selectedQuote?.staff_id && (
+                 <div className="grid grid-cols-[120px_1fr] items-center gap-4"><span className="text-sm font-medium text-muted-foreground">Staff ID:</span><span className="text-sm">{selectedQuote.staff_id}</span></div>
+            )}
+             {selectedQuote?.stripe_checkout_session_id && (
+                  <div className="grid grid-cols-[120px_1fr] items-center gap-4"><span className="text-sm font-medium text-muted-foreground">Stripe Session:</span><span className="text-sm">{selectedQuote.stripe_checkout_session_id}</span></div>
+             )}
+            {/* Add Quote URL Link */}
+            <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+              <span className="text-sm font-medium text-muted-foreground">Quote URL:</span>
+              {selectedQuote?.id ? (
+                <a
+                  href={`${window.location.origin}/quote-payment/${selectedQuote.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-600 hover:underline"
+                >
+                  {`${window.location.origin}/quote-payment/${selectedQuote.id}`}
+                </a>
+              ) : (
+                <span className="text-sm text-muted-foreground">N/A</span>
+              )}
+            </div>
+            {/* End Add Quote URL Link */}
+            {/* Removed old fields like phone, language, documents */}
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setQuoteDetailsDialogOpen(false)}>Close</Button></DialogFooter>
         </DialogContent>

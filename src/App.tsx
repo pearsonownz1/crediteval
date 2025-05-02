@@ -1,5 +1,6 @@
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react"; // Import useEffect
 import { useRoutes, Routes, Route } from "react-router-dom";
+import { usePostHog } from 'posthog-js/react'; // Import usePostHog
 import Layout from "./components/Layout"; // Import the Layout component
 import Home from "./components/home";
 import OrderPage from "./components/OrderPage";
@@ -25,12 +26,24 @@ import AllUseCases from "./components/use-cases/AllUseCases";
 import ImmigrationUseCase from "./components/use-cases/ImmigrationUseCase";
 import AcademicUseCase from "./components/use-cases/AcademicUseCase";
 import EmploymentUseCase from "./components/use-cases/EmploymentUseCase";
+import { QuotePaymentPage } from "./components/QuotePaymentPage"; // Import the new payment page
+import { PaymentSuccessPage } from "./components/PaymentSuccessPage"; // Import the payment success page
+import { OrderProvider } from "./contexts/OrderContext"; // Import the OrderProvider
 import routes from "tempo-routes";
 
 function App() {
+  const posthog = usePostHog(); // Get PostHog instance
+
+  // Send manual event on component mount
+  useEffect(() => {
+    if (posthog) {
+      posthog.capture('app_loaded', { component: 'App' });
+    }
+  }, [posthog]);
+
   return (
     <Suspense fallback={<p>Loading...</p>}>
-      <>
+      <OrderProvider> {/* Wrap Routes with OrderProvider */}
         <Routes>
           {/* Public Routes with Layout */}
           <Route path="/" element={<Layout><Home /></Layout>} />
@@ -54,15 +67,17 @@ function App() {
           {/* <Route path="/faq" element={<Layout><FAQPage /></Layout>} /> */} {/* REMOVED Duplicate FAQ route */}
           <Route path="/order-wizard" element={<Layout><OrderWizard /></Layout>} /> {/* Add Layout */}
 
-          {/* Routes without standard Layout (Auth, Order Process, Admin) */}
+          {/* Routes without standard Layout (Auth, Order Process, Admin, Quote Payment) */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           {/* <Route path="/order-wizard" element={<OrderWizard />} /> */} {/* Moved to Layout routes */}
-          <Route path="/order-success" element={<OrderSuccessPage />} /> {/* Add success page route */}
+          <Route path="/order-success" element={<OrderSuccessPage />} /> {/* Existing order success page */}
+          <Route path="/payment-success" element={<PaymentSuccessPage />} /> {/* Add quote payment success route */}
+          <Route path="/quote/:quoteId" element={<QuotePaymentPage />} /> {/* Add quote payment page route */}
 
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>
-            <Route path="/order" element={<OrderPage />} />
+            <Route path="/order" element={<Layout><OrderPage /></Layout>} /> {/* Add Layout */}
             {/* <Route path="/order-wizard" element={<OrderWizard />} /> */} {/* Moved to public */}
             {/* <Route path="/dashboard" element={<AdminDashboard />} /> */} {/* Removed duplicate dashboard route */}
             <Route path="/admin" element={<AdminDashboard />} /> {/* Keep /admin as the route */}
@@ -70,7 +85,7 @@ function App() {
           </Route>
         </Routes>
         {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
-      </>
+      </OrderProvider> {/* Close OrderProvider */}
     </Suspense>
   );
 }

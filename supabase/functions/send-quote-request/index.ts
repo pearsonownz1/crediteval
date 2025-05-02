@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2"; // Import Supabase client
 import { Resend } from "npm:resend";
-import { getAllowedCorsHeaders } from "../_shared/cors.ts";
+import { corsHeaders } from "../_shared/cors.ts"; // Import the corsHeaders object directly
 
 // --- Environment Variables ---
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -9,6 +9,7 @@ const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const resendApiKey = Deno.env.get("RESEND_API_KEY");
 const adminEmail = Deno.env.get("ADMIN_EMAIL_ADDRESS"); // Keep for potential future use
 const fromEmail = Deno.env.get("FROM_EMAIL_ADDRESS");
+const klaviyoApiKey = Deno.env.get("KLAVIYO_PRIVATE_API_KEY"); // Added Klaviyo API Key
 
 // --- Initialize Clients ---
 let supabaseAdmin: SupabaseClient | null = null;
@@ -39,8 +40,10 @@ interface QuoteRequestData {
 }
 
 serve(async (req) => {
-  const requestOrigin = req.headers.get("Origin");
-  const corsHeaders = getAllowedCorsHeaders(requestOrigin); // Get headers using shared function
+  // No need to get requestOrigin if using wildcard CORS headers from the shared file
+  // const requestOrigin = req.headers.get("Origin");
+  // Use the imported corsHeaders directly
+  // const corsHeaders = getAllowedCorsHeaders(requestOrigin); // Removed incorrect function call
 
   // 1. Handle CORS preflight request
   if (req.method === "OPTIONS") {
@@ -75,10 +78,10 @@ serve(async (req) => {
      console.log("Preparing to insert quote data:", {
         name: requestData.name,
         email: requestData.email,
-        phone: requestData.phone,
-        service: requestData.service,
-        language_from: requestData.languageFrom,
-        language_to: requestData.languageTo,
+        // phone: requestData.phone, // Removed - Column does not exist
+        service_type: requestData.service, // Corrected column name
+        // language_from: requestData.languageFrom, // Removed - Column does not exist
+        // language_to: requestData.languageTo,     // Removed - Column does not exist
         document_paths: requestData.documentPaths,
      });
      const { data: insertData, error: insertError } = await supabaseAdmin
@@ -87,10 +90,10 @@ serve(async (req) => {
           {
             name: requestData.name,
             email: requestData.email,
-            phone: requestData.phone,
-            service: requestData.service,
-            language_from: requestData.languageFrom, // Use snake_case for DB
-            language_to: requestData.languageTo,     // Use snake_case for DB
+            // phone: requestData.phone, // Removed - Column does not exist
+            service_type: requestData.service, // Ensure this uses service_type for DB column
+            // language_from: requestData.languageFrom, // Removed - Column does not exist
+            // language_to: requestData.languageTo,     // Removed - Column does not exist
             document_paths: requestData.documentPaths,
             // status: 'new', // Default status is set in the table definition
             // created_at is set automatically
@@ -103,13 +106,79 @@ serve(async (req) => {
         console.error("!!! Database Insert Error:", insertError); // Make error more prominent
         // Log the data that failed to insert
         console.error("!!! Failed to insert data:", {
-            name: requestData.name, email: requestData.email, phone: requestData.phone, service: requestData.service,
-            language_from: requestData.languageFrom, language_to: requestData.languageTo, document_paths: requestData.documentPaths
+            name: requestData.name, email: requestData.email, /* phone: requestData.phone, */ service_type: requestData.service, // Corrected column name and removed phone
+            // language_from: requestData.languageFrom, // Removed - Column does not exist
+            // language_to: requestData.languageTo,     // Removed - Column does not exist
+            document_paths: requestData.documentPaths
         });
         throw new Error(`Database insert error: ${insertError.message}`);
       }
 
       console.log("+++ Quote data inserted successfully. Inserted row:", insertData); // Log success and inserted data
+
+      // --- Send Klaviyo Event ---
+      if (klaviyoApiKey && klaviyoApiKey !== "YOUR_KLAVIYO_PRIVATE_API_KEY") {
+        const klaviyoPayload = {
+          data: {
+            type: 'event',
+            attributes: {
+              profile: {
+                email: requestData.email,
+                // Optionally add other profile identifiers if available and desired
+                // name: requestData.name, // Klaviyo often uses standard profile properties
+                // phone_number: requestData.phone
+              },
+              metric: {
+                name: 'quote_requested' // Define the new metric name
+              },
+              properties: {
+                // Map relevant properties from the quote request
+                quote_id: insertData.id, // Use the ID from the inserted row
+                service_type: requestData.service,
+                name: requestData.name, // Include name in properties
+                phone: requestData.phone, // Include phone if provided
+                language_from: requestData.languageFrom, // Include language if provided
+                language_to: requestData.languageTo, // Include language if provided
+                document_count: requestData.documentPaths?.length || 0,
+                submitted_at: requestData.submittedAt // Include submission timestamp
+                // Add any other relevant properties from requestData or insertData
+              }
+            }
+          }
+        };
+
+        console.log("Constructed Klaviyo Payload:", JSON.stringify(klaviyoPayload, null, 2));
+
+        try {
+          const klaviyoApiUrl = 'https://a.klaviyo.com/api/events/';
+          const klaviyoResponse = await fetch(klaviyoApiUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'revision': '2023-02-22' // Recommended revision
+            },
+            body: JSON.stringify(klaviyoPayload)
+          });
+
+          console.log(`Klaviyo API Response Status: ${klaviyoResponse.status}`);
+          if (!klaviyoResponse.ok || klaviyoResponse.status !== 202) { // 202 Accepted is success for events
+             const errorText = await klaviyoResponse.text();
+             console.error(`Klaviyo API request failed or returned unexpected status ${klaviyoResponse.status}:`, errorText);
+             // Decide if this should be a critical failure or just logged
+          } else {
+             console.log("Klaviyo event 'quote_requested' sent successfully.");
+          }
+        } catch (klaviyoError) {
+           console.error("Error sending event to Klaviyo:", klaviyoError);
+           // Log error but continue with email sending
+        }
+
+      } else {
+         console.warn("Klaviyo API Key missing or placeholder. Skipping Klaviyo event.");
+      }
+      // --- End Klaviyo Event ---
 
 
     // 4. Construct Email Content
@@ -135,7 +204,7 @@ serve(async (req) => {
       <h1>New Quote Request</h1>
       <p>A new quote request has been submitted:</p>
       <ul>
-        <li>Service: <strong>${requestData.service}</strong></li>
+        <li>Service Type: <strong>${requestData.service}</strong></li> <!-- Corrected label -->
         <li>Name: ${requestData.name}</li>
         <li>Email: ${requestData.email}</li>
         ${requestData.phone ? `<li>Phone: ${requestData.phone}</li>` : ""}

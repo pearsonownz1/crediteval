@@ -29,7 +29,7 @@ type DocumentState = {
 type ServiceType = "Certified Translation" | "Credential Evaluation" | "Expert Opinion Letter";
 
 const QuotePage = () => {
-  const [step, setStep] = useState<1 | 2>(1);
+  // const [step, setStep] = useState<1 | 2>(1); // Removed step state
   const [selectedService, setSelectedService] = useState<ServiceType | null>(null);
   const [formData, setFormData] = useState({
     name: "",
@@ -45,10 +45,7 @@ const QuotePage = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleServiceSelect = (service: ServiceType) => {
-    setSelectedService(service);
-    setStep(2);
-  };
+  // Removed handleServiceSelect - now handled by dropdown
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { id, value } = e.target;
@@ -211,6 +208,12 @@ const QuotePage = () => {
     setSubmitError(null);
 
     // Basic validation
+    // Add check for selected service first
+    if (!selectedService) {
+        setSubmitError("Please select a service type from the dropdown.");
+        setIsSubmitting(false);
+        return;
+    }
     if (!formData.name || !formData.email) {
         setSubmitError("Please fill in your name and email address.");
         setIsSubmitting(false);
@@ -288,11 +291,12 @@ const QuotePage = () => {
     // --- End TODO ---
   };
 
-  const handleBack = () => {
-    setStep(1);
+  // Removed handleBack - no steps to go back to
+
+  // Helper function to reset the form state
+  const resetForm = () => {
     setSelectedService(null);
-    // Optionally clear form data and documents
-    setFormData({ name: "", email: "", phone: "", languageFrom: "", languageTo: "" }); // Reset languages too
+    setFormData({ name: "", email: "", phone: "", languageFrom: "", languageTo: "" });
     setDocuments([]);
     setSubmitStatus('idle');
     setSubmitError(null);
@@ -305,16 +309,12 @@ const QuotePage = () => {
           <CardTitle className="text-2xl font-bold text-center text-primary">
             Get Your Quote
           </CardTitle>
-          {step === 1 && (
-             <CardDescription className="text-center">
-                Select the service you need a quote for.
-             </CardDescription>
-          )}
-           {step === 2 && selectedService && (
-             <CardDescription className="text-center">
-                Requesting a quote for: <span className="font-semibold">{selectedService}</span>. Please provide your details.
-             </CardDescription>
-          )}
+          {/* Updated Card Description */}
+          <CardDescription className="text-center">
+            {selectedService
+              ? `Requesting a quote for: ${selectedService}. Please provide your details below.`
+              : "Select the service you need a quote for and fill out the form."}
+          </CardDescription>
         </CardHeader>
 
         <CardContent>
@@ -323,36 +323,40 @@ const QuotePage = () => {
                 <Check className="h-16 w-16 text-green-500 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold mb-2">Quote Request Submitted!</h3>
                 <p className="text-muted-foreground">Thank you for your request. We will get back to you shortly.</p>
-                <Button onClick={() => { setStep(1); setSelectedService(null); setSubmitStatus('idle'); setFormData({ name: "", email: "", phone: "", languageFrom: "", languageTo: "" }); setDocuments([]); }} className="mt-6">
+                {/* Use resetForm for the button */}
+                <Button onClick={resetForm} className="mt-6">
                     Request Another Quote
                 </Button>
             </div>
           ) : (
-            <>
-              {step === 1 && (
-                <div className="grid grid-cols-1 gap-4">
-                  {(["Certified Translation", "Credential Evaluation", "Expert Opinion Letter"] as ServiceType[]).map((service) => (
-                    <Button
-                      key={service}
-                      variant="outline"
-                      className="w-full h-16 text-lg justify-center"
-                      onClick={() => handleServiceSelect(service)}
+            // Form is now directly rendered if not success
+            <form onSubmit={handleSubmit} className="space-y-6">
+                 {/* Add Service Selection Dropdown */}
+                 <div className="space-y-2">
+                    <Label htmlFor="service-select">Select Service</Label>
+                    <Select
+                        value={selectedService ?? ""} // Use empty string if null
+                        onValueChange={(value: ServiceType | "") => setSelectedService(value || null)} // Handle empty string case
+                        required // Make service selection required
+                        disabled={isSubmitting}
                     >
-                      {service}
-                    </Button>
-                  ))}
-                </div>
-              )}
+                        <SelectTrigger id="service-select">
+                        <SelectValue placeholder="Choose a service..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                        {(["Certified Translation", "Credential Evaluation", "Expert Opinion Letter"] as ServiceType[]).map((service) => (
+                            <SelectItem key={service} value={service}>
+                            {service}
+                            </SelectItem>
+                        ))}
+                        </SelectContent>
+                    </Select>
+                 </div>
 
-              {step === 2 && selectedService && (
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  {/* Back Button */}
-                   <Button variant="ghost" size="sm" onClick={handleBack} className="mb-4 -ml-2">
-                        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Services
-                   </Button>
+                 {/* Remove Back Button */}
 
-                  {/* Form Fields */}
-                  <div className="space-y-2">
+                 {/* Form Fields */}
+                 <div className="space-y-2">
                     <Label htmlFor="name">Full Name</Label>
                     <Input
                       id="name"
@@ -518,8 +522,7 @@ const QuotePage = () => {
                     {isSubmitting ? "Submitting..." : "Submit Quote Request"}
                   </Button>
                 </form>
-              )}
-            </>
+            // Removed the closing </> fragment and extra closing parenthesis/braces
           )}
         </CardContent>
         {/* Optional Footer */}

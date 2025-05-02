@@ -9,10 +9,10 @@ const Footer = () => {
       <div className="container">
         <div className="grid gap-8 md:grid-cols-4">
           <div>
-            <div className="flex items-center gap-2 mb-4">
-              <Globe className="h-6 w-6 text-white" />
-              <span className="text-xl font-bold text-white">CreditEval</span>
-            </div>
+            {/* Replace Globe icon and text with image logo */}
+            <Link to="/" className="inline-block mb-4">
+              <img src="/logo4.png" alt="CreditEval Logo" className="h-32" />
+            </Link>
             <p className="text-sm mb-4">
               Professional document translation and credential evaluation
               services you can trust.

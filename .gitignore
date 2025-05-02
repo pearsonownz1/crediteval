@@ -36,3 +36,5 @@ core
 .github/
 
 .vercel
+
+.env.local

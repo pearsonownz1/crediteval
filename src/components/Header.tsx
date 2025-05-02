@@ -21,7 +21,7 @@ const Header = () => {
       <div className="container flex h-16 items-center justify-between">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2" onClick={closeMobileMenu}>
-          <img src="/logo.png" alt="CreditEval Logo" className="h-10" />
+          <img src="/logo4.png" alt="CreditEval Logo" className="h-32" />
         </Link>
 
         {/* Desktop Navigation */}
@@ -43,15 +43,20 @@ const Header = () => {
           </Link>
         </nav>
 
-        {/* Right side: Order Button and Mobile Menu Toggle */}
+        {/* Right side Buttons & Mobile Menu Toggle */}
         <div className="flex items-center gap-2">
-          {/* Start Order Button (Visible on all sizes) */}
-          {/* Using Button with asChild and Link inside */}
-          <Button asChild size="sm" className="bg-primary hover:bg-primary/90 text-xs sm:text-sm px-2 sm:px-4">
-            <Link to="/order-wizard" onClick={closeMobileMenu}>Start Your Order</Link>
-          </Button>
+          {/* Desktop Buttons */}
+          <div className="hidden md:flex items-center gap-2">
+             <Button asChild variant="outline" size="sm" className="text-xs sm:text-sm px-2 sm:px-4">
+               <Link to="/quote" onClick={closeMobileMenu}>Get a Quote</Link>
+             </Button>
+             <Button asChild size="sm" className="bg-primary hover:bg-primary/90 text-xs sm:text-sm px-2 sm:px-4">
+               <Link to="/order" onClick={closeMobileMenu}>Order Now</Link>
+             </Button>
+          </div>
+           {/* Mobile Order Button Removed */}
 
-          {/* Mobile Menu Button (Visible only on mobile) */}
+          {/* Mobile Menu Toggle */}
           <Button
             variant="ghost"
             size="icon"
@@ -130,6 +135,19 @@ const Header = () => {
             >
               FAQ
             </Link>
+
+            {/* Mobile Menu Bottom Buttons */}
+            <div className="pt-6 mt-4 border-t border-gray-200 space-y-2">
+               {/* Login Button Removed */}
+               <div className="flex gap-2">
+                 <Button asChild variant="outline" className="w-1/2">
+                   <Link to="/quote" onClick={closeMobileMenu}>Get a Quote</Link>
+                 </Button>
+                 <Button asChild className="w-1/2 bg-primary hover:bg-primary/90">
+                   <Link to="/order" onClick={closeMobileMenu}>Order Now</Link>
+                 </Button>
+               </div>
+            </div>
           </nav>
         )}
       </div>

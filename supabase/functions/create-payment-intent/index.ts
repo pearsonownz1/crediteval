@@ -1,9 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@11.16.0?target=deno&deno-std=0.132.0"; // Revert to esm.sh import
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"; // Use esm.sh for Supabase client
+import Stripe from "https://esm.sh/stripe@11.16.0?target=deno&deno-std=0.132.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getAllowedCorsHeaders } from "../_shared/cors.ts";
 
-console.log("Function starting...");
+console.log("Function starting (Payment Intent version)...");
 
 // IMPORTANT: Set these in your Supabase project's Function Environment Variables settings.
 const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
@@ -23,15 +23,14 @@ const supabaseAdmin = (supabaseUrl && supabaseServiceRoleKey)
 
 serve(async (req) => {
   const origin = req.headers.get("Origin");
-  const corsHeaders = getAllowedCorsHeaders(origin); // Use consistent name
+  const corsHeaders = getAllowedCorsHeaders(origin); // Get headers dynamically
 
   // Handle CORS preflight request
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders }); // Use dynamic headers
   }
 
   // --- Environment Variable Check ---
-  // Check inside the handler if clients are initialized
   if (!stripe || !supabaseAdmin) {
       console.error("Missing environment variables (Stripe or Supabase). Function cannot proceed.");
       return new Response(JSON.stringify({ error: "Server configuration error." }), {
@@ -43,104 +42,123 @@ serve(async (req) => {
 
   try {
     const requestBody = await req.json();
-    console.log("Received request body:", JSON.stringify(requestBody, null, 2)); // Log the entire body
+    console.log("Received request body:", JSON.stringify(requestBody, null, 2));
 
-    const { amount, orderId } = requestBody; // Destructure after logging
+    // Destructure expected parameters for Payment Intent
+    const { amount, orderId, currency = 'usd' } = requestBody; // Expect orderId now
+
     console.log(`Extracted amount: ${amount} (type: ${typeof amount})`);
-    console.log(`Extracted orderId: ${orderId} (type: ${typeof orderId})`); // Log extracted orderId and its type
+    console.log(`Extracted orderId: ${orderId} (type: ${typeof orderId})`); // Log orderId
+    console.log(`Extracted currency: ${currency}`);
 
-    if (!amount || typeof amount !== 'number' || amount < 50) { // Minimum amount check (e.g., 50 cents)
+    // --- Input Validation ---
+    if (!amount || typeof amount !== 'number' || amount < 50) { // Amount is expected in cents
         console.error("Amount validation failed:", amount);
         throw new Error("Invalid or missing amount provided (must be at least 50 cents).");
     }
-
-    // --- Relaxed orderId check and potential conversion ---
-    if (!orderId) {
-        console.error("orderId validation failed: Missing orderId");
-        throw new Error("Missing orderId provided.");
+    if (!orderId || typeof orderId !== 'string') { // Validate orderId
+        console.error("Order ID validation failed:", orderId);
+        throw new Error("Invalid or missing orderId.");
     }
+    // --- End Input Validation ---
 
-    let orderIdString: string;
-    if (typeof orderId === 'number') {
-        console.log("Received orderId as number, converting to string.");
-        orderIdString = String(orderId);
-    } else if (typeof orderId === 'string') {
-        orderIdString = orderId;
-    } else {
-        console.error(`orderId validation failed: Invalid type - ${typeof orderId}`);
-        throw new Error(`Invalid orderId type provided: ${typeof orderId}`);
-    }
-    // --- End relaxed check ---
+    console.log(`Validation passed. Creating Payment Intent for order ${orderId} with amount ${amount}`);
 
-    console.log(`Validation passed. Processing request for order ${orderIdString} with amount ${amount}`);
+    // --- Check if Order Exists and Get Details (Optional but Recommended) ---
+    // You might want to fetch the order from Supabase here to confirm the amount
+    // and ensure the order exists before creating the Payment Intent.
+    // const { data: orderData, error: orderError } = await supabaseAdmin
+    //   .from('orders')
+    //   .select('total_amount, status') // Select relevant fields
+    //   .eq('id', orderId)
+    //   .single();
+    //
+    // if (orderError || !orderData) {
+    //   console.error(`Order ${orderId} not found or error fetching:`, orderError);
+    //   throw new Error(`Order ${orderId} not found.`);
+    // }
+    //
+    // // Optional: Verify amount matches the order record
+    // if (orderData.total_amount !== amount) {
+    //    console.warn(`Amount mismatch for order ${orderId}. Request: ${amount}, DB: ${orderData.total_amount}. Proceeding with requested amount.`);
+    //    // Decide how to handle mismatch - throw error or proceed?
+    // }
+    //
+    // if (orderData.status === 'paid') { // Prevent paying for already paid order
+    //    console.error(`Order ${orderId} has already been paid.`);
+    //    throw new Error(`Order ${orderId} has already been paid.`);
+    // }
+    // --- End Order Check ---
 
-    // Create a PaymentIntent
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amount, // Amount should be in the smallest currency unit (e.g., cents for USD)
-      currency: "usd", // Change to your desired currency
-      automatic_payment_methods: {
-        enabled: true, // Let Stripe handle payment method types
-      },
-      // Optionally add metadata like order_id
-      metadata: {
-        order_id: orderIdString, // Use converted string
-      },
-    });
 
-    console.log(`PaymentIntent ${paymentIntent.id} created for order ${orderIdString}.`);
+    // Create a Stripe Payment Intent
+    const paymentIntentParams: Stripe.PaymentIntentCreateParams = {
+        amount: amount, // Amount in cents
+        currency: currency,
+        metadata: {
+            order_id: orderId, // Add order_id to metadata
+            quote_id: orderId, // Add quote_id using the orderId value
+            // Add any other relevant metadata you might need
+        },
+        // You might need 'automatic_payment_methods': { enabled: true } depending on your Stripe setup
+        // Or specify payment_method_types: ['card']
+        payment_method_types: ['card'],
+        // Consider adding customer ID if you manage Stripe customers:
+        // customer: stripeCustomerId,
+        // description: `Payment for Order ID: ${orderId}`, // Optional description
+    };
 
-    // --- Update Order Status using Service Role ---
-    // This happens *before* returning the client secret. If this fails,
-    // the payment might still succeed on Stripe, but the order status won't reflect it initially.
-    // A webhook is the robust way to handle the final 'paid' status.
+    console.log("Creating Payment Intent with params:", paymentIntentParams);
+    const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
+
+    console.log(`Stripe Payment Intent ${paymentIntent.id} created for order ${orderId}.`);
+
+    // --- Update Order Status/Payment Intent ID using Service Role (Optional but Recommended) ---
+    // Store the paymentIntent.id in your order table for reconciliation
     try {
-      // --- Add detailed logging before update ---
-      console.log(`Attempting to update order ID: ${orderIdString} (Type: ${typeof orderIdString})`);
-      console.log(`Updating with total_amount: ${amount} (Type: ${typeof amount})`);
-      // --- End detailed logging ---
-
-      const { data: updateData, error: updateError } = await supabaseAdmin
-        .from('orders')
+      console.log(`Attempting to update order ID: ${orderId} with payment intent ID: ${paymentIntent.id}`);
+      const { error: updateError } = await supabaseAdmin
+        .from('orders') // Assuming you store this in the 'orders' table
         .update({
-          status: 'pending_payment', // Indicate payment initiated
-          stripe_payment_intent_id: paymentIntent.id,
-          total_amount: amount, // Add the total_amount update here
+          stripe_payment_intent_id: paymentIntent.id, // Store the Payment Intent ID
+          status: 'pending_payment', // Update status as payment is initiated
+          total_amount: amount // Ensure total_amount is stored/updated correctly
         })
-        .eq('id', orderIdString) // Use converted string
-        .select('id') // Select something to confirm update
-        .single(); // Ensure it targets one row
+        .eq('id', orderId);
 
-      // --- Add detailed logging after update ---
       if (updateError) {
-        console.error(`DB UPDATE FAILED for order ${orderIdString}. Error:`, JSON.stringify(updateError, null, 2));
-        // Log the error but don't fail the request, as payment can still proceed
-        // Consider adding specific logging or monitoring here
+        console.error(`DB UPDATE FAILED for order ${orderId}. Error:`, JSON.stringify(updateError, null, 2));
+        // Log the error but don't fail the request, as the clientSecret is the priority here
       } else {
-        console.log(`DB UPDATE SUCCEEDED for order ${orderIdString}. Result data:`, JSON.stringify(updateData, null, 2));
-        console.log(`Order ${orderIdString} status updated to 'pending_payment', total_amount set to ${amount}, and PI ID stored.`);
+        console.log(`DB UPDATE SUCCEEDED for order ${orderId}. Stored payment intent ID and updated status/amount.`);
       }
-      // --- End detailed logging ---
     } catch (dbError) {
-      console.error(`Database exception updating order ${orderIdString} status:`, dbError);
+      console.error(`Database exception updating order ${orderId}:`, dbError);
     }
     // --- End Update Order Status ---
 
-    // Return the client_secret
+    // Log the client secret before returning
+    console.log(`Returning clientSecret for Payment Intent ${paymentIntent.id}`);
+
+    // Return the client secret
     return new Response(
-      JSON.stringify({ clientSecret: paymentIntent.client_secret }),
+      JSON.stringify({ clientSecret: paymentIntent.client_secret }), // Return the client secret
       {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" }, // Use dynamic headers
         status: 200,
       }
     );
   } catch (error) {
     console.error("Error processing payment intent request:", error);
-    return new Response(JSON.stringify({ error: error.message || "Internal server error." }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      // Use 500 for server-side errors, 400 for bad client input (already handled)
-      status: error.type === 'StripeCardError' ? 400 : 500,
+    // Check if it's a Stripe error object
+    const errorMessage = error instanceof Error ? error.message : "Internal server error.";
+    const errorStatus = (error as any).type === 'StripeCardError' ? 400 : 500; // Use 400 for card errors
+
+    return new Response(JSON.stringify({ error: errorMessage }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" }, // Use dynamic headers
+      status: errorStatus,
     });
   }
 });
 
-console.log("Function handler registered.");
+console.log("Function handler registered (Payment Intent version).");
