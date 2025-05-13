@@ -5,7 +5,7 @@ export type DocumentState = {
   size: number;
   type: string;
   file: File;
-  status: 'pending' | 'uploading' | 'success' | 'error';
+  status: "pending" | "uploading" | "success" | "error";
   error?: string;
   path?: string;
   progress?: number;
@@ -29,6 +29,15 @@ export interface OrderData {
     visaType: string;
     urgency: string; // Consider UrgencyType
     specialInstructions: string;
+    deliveryType: string; // Added for delivery options
+    shippingInfo: {
+      country: string;
+      address: string;
+      apartment: string;
+      city: string;
+      state: string;
+      zip: string;
+    };
   };
   payment: {
     method: string;
