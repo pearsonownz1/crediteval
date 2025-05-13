@@ -568,10 +568,10 @@ const AdminDashboard = () => {
                     {/* Update Table Headers */}
                     <TableHead>Quote ID</TableHead>
                     <TableHead>Client</TableHead>
-                    <TableHead>Service Type</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Documents</TableHead>
                     <TableHead>Price</TableHead>
-                    <TableHead>Date</TableHead>
+                    <TableHead>Created Date</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -638,15 +638,15 @@ const AdminDashboard = () => {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            {new Date(order.created_at).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell>
                             {renderDocumentLinks(order.document_paths)}
                           </TableCell>
                           <TableCell>
                             {typeof order.total_amount === "number"
                               ? `$${(order.total_amount / 100).toFixed(2)}`
                               : "N/A"}
+                          </TableCell>
+                          <TableCell>
+                            {new Date(order.created_at).toLocaleDateString()}
                           </TableCell>
                           <TableCell>
                             <div
