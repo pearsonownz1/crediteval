@@ -760,7 +760,8 @@ const DeliveryDetailsStep = ({
                     country: value,
                   },
                 })
-              }>
+              }
+              required>
               <SelectTrigger id="country">
                 <SelectValue placeholder="Select country" />
               </SelectTrigger>
@@ -1275,7 +1276,6 @@ const ReviewStep = ({ orderData }: ReviewStepProps) => {
               </p>
             )}
             {/* End Added Service Benefit Text */}
-
             {/* Conditional details based on service type */}
             {orderData.services.type === "translation" && (
               <>
@@ -1304,6 +1304,10 @@ const ReviewStep = ({ orderData }: ReviewStepProps) => {
               </p>
             )}
             {/* End conditional details */}
+            <p className="text-sm">
+              Delivery Type: {orderData.services.deliveryType}
+            </p>{" "}
+            {/* Added Delivery Type */}
             <p className="text-sm">Processing Time: {getUrgencyText()}</p>
             {orderData.services.specialInstructions && (
               <div>
@@ -1532,7 +1536,7 @@ const OrderWizard = ({
     } else if (deliveryType === "international") {
       totalPrice += 150;
     }
-
+    console.log({ totalPrice });
     return totalPrice;
   };
   // --- End Calculate Price Function ---

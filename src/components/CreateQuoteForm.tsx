@@ -1,49 +1,56 @@
-import React, { useState, useEffect } from 'react'; // Import useEffect
-import { supabase } from '@/lib/supabaseClient';
-import { Database } from '@/types/supabase';
-import { useAuth } from '@/contexts/AuthContext'; // Use the exported hook
-import { usePostHog } from 'posthog-js/react'; // Import usePostHog
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import React, { useState, useEffect } from "react"; // Import useEffect
+import { supabase } from "@/lib/supabaseClient";
+import { Database } from "@/types/supabase";
+import { useAuth } from "@/contexts/AuthContext"; // Use the exported hook
+import { usePostHog } from "posthog-js/react"; // Import usePostHog
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { useToast } from '@/components/ui/use-toast'; // Assuming you use Shadcn toast
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+} from "@/components/ui/select";
+import { useToast } from "@/components/ui/use-toast"; // Assuming you use Shadcn toast
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardFooter,
+} from "@/components/ui/card";
 
 // Ensure Database['public']['Tables']['quotes'] exists and is correct in supabase.ts
-type QuoteInsert = Database['public']['Tables']['quotes']['Insert'];
+type QuoteInsert = Database["public"]["Tables"]["quotes"]["Insert"];
 
 // Define service types - adjust as needed
 const serviceTypes = [
-  'Certified Translation',
-  'Credential Evaluation',
-  'Expert Opinion Letter',
+  "Certified Translation",
+  "Credential Evaluation",
+  "Expert Opinion Letter",
   // Add other services here
 ];
 export function CreateQuoteForm() {
   const { user } = useAuth(); // Use the hook here
   const { toast } = useToast();
   const posthog = usePostHog(); // Get PostHog instance
-  const [clientName, setClientName] = useState('');
-  const [clientEmail, setClientEmail] = useState('');
-  const [serviceType, setServiceType] = useState('');
-  const [price, setPrice] = useState('');
+  const [clientName, setClientName] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [serviceType, setServiceType] = useState("");
+  const [price, setPrice] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [createdQuoteLink, setCreatedQuoteLink] = useState<string | null>(null);
 
   const validateForm = () => {
-    if (!clientName.trim()) return 'Client Full Name is required.';
-    if (!clientEmail.trim()) return 'Client Email Address is required.';
-    if (!/\S+@\S+\.\S+/.test(clientEmail)) return 'Please enter a valid email address.';
-    if (!serviceType) return 'Service Type is required.';
+    if (!clientName.trim()) return "Client Full Name is required.";
+    if (!clientEmail.trim()) return "Client Email Address is required.";
+    if (!/\S+@\S+\.\S+/.test(clientEmail))
+      return "Please enter a valid email address.";
+    if (!serviceType) return "Service Type is required.";
     const priceNum = parseFloat(price);
-    if (isNaN(priceNum) || priceNum <= 0) return 'Price must be a positive number.';
+    // if (isNaN(priceNum) || priceNum <= 0) return 'Price must be a positive number.'; // Price will be set based on delivery type
     return null; // No errors
   };
 
@@ -55,37 +62,46 @@ export function CreateQuoteForm() {
     const validationError = validateForm();
     if (validationError) {
       toast({
-        title: 'Validation Error',
+        title: "Validation Error",
         description: validationError,
-        variant: 'destructive',
+        variant: "destructive",
       });
       setIsLoading(false);
       return;
     }
 
     if (!user) {
-        toast({
-            title: 'Error',
-            description: 'You must be logged in to create a quote.',
-            variant: 'destructive',
-        });
-        setIsLoading(false);
-        return;
+      toast({
+        title: "Error",
+        description: "You must be logged in to create a quote.",
+        variant: "destructive",
+      });
+      setIsLoading(false);
+      return;
+    }
+
+    let calculatedPrice = parseFloat(price); // Default to entered price
+
+    // Assign price based on Delivery Type
+    if (serviceType === "express email with tracking") {
+      calculatedPrice = 99;
+    } else if (serviceType === "International delivery") {
+      calculatedPrice = 150;
     }
 
     const quoteData: QuoteInsert = {
       name: clientName.trim(), // Changed from client_name
       email: clientEmail.trim(), // <--- Changed to email
       service_type: serviceType,
-      price: parseFloat(price),
+      price: calculatedPrice, // Use the calculated price
       staff_id: user.id, // Assign the logged-in staff member's ID
-      status: 'Pending',
+      status: "Pending",
       // expires_at: // Optional: Set expiration logic if needed
     };
 
     try {
       const { data, error } = await supabase
-        .from('quotes')
+        .from("quotes")
         .insert(quoteData)
         .select()
         .single(); // Select the created quote to get its ID
@@ -98,7 +114,7 @@ export function CreateQuoteForm() {
 
         // Capture PostHog event for quote creation
         if (posthog) {
-          posthog.capture('quote_created', {
+          posthog.capture("quote_created", {
             quote_id: quoteId,
             service_type: serviceType,
             price: quotePrice,
@@ -111,29 +127,33 @@ export function CreateQuoteForm() {
 
         // Trigger the email sending function
         try {
-          console.log('Invoking send-quote-email function with data:', data);
-          const { error: functionError } = await supabase.functions.invoke('send-quote-email', {
-            body: data, // Pass the created quote data to the function
-          });
+          console.log("Invoking send-quote-email function with data:", data);
+          const { error: functionError } = await supabase.functions.invoke(
+            "send-quote-email",
+            {
+              body: data, // Pass the created quote data to the function
+            }
+          );
 
           if (functionError) {
-            throw new Error(`Failed to send quote email: ${functionError.message}`);
+            throw new Error(
+              `Failed to send quote email: ${functionError.message}`
+            );
           }
 
           toast({
-            title: 'Quote Created & Email Sent!',
+            title: "Quote Created & Email Sent!",
             description: `An email has been sent to ${clientEmail}.`,
           });
-
         } catch (emailError: any) {
-           console.error('Error sending quote email:', emailError);
-           // Notify user that quote was created but email failed
-           toast({
-             title: 'Quote Created (Email Failed)',
-             description: `Quote saved, but failed to send email: ${emailError.message}. Link: ${quoteLink}`,
-             variant: 'destructive', // Changed from 'warning' as it might not be supported
-             duration: 9000, // Keep message longer
-           });
+          console.error("Error sending quote email:", emailError);
+          // Notify user that quote was created but email failed
+          toast({
+            title: "Quote Created (Email Failed)",
+            description: `Quote saved, but failed to send email: ${emailError.message}. Link: ${quoteLink}`,
+            variant: "destructive", // Changed from 'warning' as it might not be supported
+            duration: 9000, // Keep message longer
+          });
         }
 
         // Reset form? Consider if this is desired UX
@@ -142,15 +162,14 @@ export function CreateQuoteForm() {
         // setServiceType('');
         // setPrice('');
       } else {
-         throw new Error('Quote created but no data returned.');
+        throw new Error("Quote created but no data returned.");
       }
-
     } catch (error: any) {
-      console.error('Error creating quote:', error);
+      console.error("Error creating quote:", error);
       toast({
-        title: 'Error Creating Quote',
-        description: error.message || 'An unexpected error occurred.',
-        variant: 'destructive',
+        title: "Error Creating Quote",
+        description: error.message || "An unexpected error occurred.",
+        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
@@ -159,13 +178,21 @@ export function CreateQuoteForm() {
 
   const handleCopyLink = () => {
     if (createdQuoteLink) {
-      navigator.clipboard.writeText(createdQuoteLink)
+      navigator.clipboard
+        .writeText(createdQuoteLink)
         .then(() => {
-          toast({ title: 'Link Copied!', description: 'Quote link copied to clipboard.' });
+          toast({
+            title: "Link Copied!",
+            description: "Quote link copied to clipboard.",
+          });
         })
-        .catch(err => {
-          console.error('Failed to copy link:', err);
-          toast({ title: 'Copy Failed', description: 'Could not copy link to clipboard.', variant: 'destructive' });
+        .catch((err) => {
+          console.error("Failed to copy link:", err);
+          toast({
+            title: "Copy Failed",
+            description: "Could not copy link to clipboard.",
+            variant: "destructive",
+          });
         });
     }
   };
@@ -206,8 +233,7 @@ export function CreateQuoteForm() {
               value={serviceType}
               onValueChange={setServiceType}
               required
-              disabled={isLoading}
-            >
+              disabled={isLoading}>
               <SelectTrigger id="serviceType">
                 <SelectValue placeholder="Select a service" />
               </SelectTrigger>
@@ -235,18 +261,27 @@ export function CreateQuoteForm() {
             />
           </div>
           <Button type="submit" disabled={isLoading} className="w-full">
-            {isLoading ? 'Creating...' : 'Create Quote'}
+            {isLoading ? "Creating..." : "Create Quote"}
           </Button>
         </form>
       </CardContent>
       {createdQuoteLink && (
         <CardFooter className="flex flex-col items-start space-y-2">
-           <p className="text-sm text-green-600">Quote created successfully!</p>
-           <div className="flex items-center space-x-2 w-full">
-             <Input type="text" value={createdQuoteLink} readOnly className="flex-grow" />
-             <Button onClick={handleCopyLink} variant="outline" size="sm">Copy Link</Button>
-           </div>
-           <p className="text-sm text-muted-foreground">An email has been sent to {clientEmail} with the quote details.</p>
+          <p className="text-sm text-green-600">Quote created successfully!</p>
+          <div className="flex items-center space-x-2 w-full">
+            <Input
+              type="text"
+              value={createdQuoteLink}
+              readOnly
+              className="flex-grow"
+            />
+            <Button onClick={handleCopyLink} variant="outline" size="sm">
+              Copy Link
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            An email has been sent to {clientEmail} with the quote details.
+          </p>
         </CardFooter>
       )}
     </Card>
