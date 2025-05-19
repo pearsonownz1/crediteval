@@ -1819,6 +1819,7 @@ const OrderWizard = ({
           body: JSON.stringify({
             amount: calculatedAmount,
             orderId: orderId,
+            services: orderData.services,
           }),
         });
 
