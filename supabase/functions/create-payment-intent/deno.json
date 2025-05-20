@@ -1,6 +1,8 @@
 {
   "imports": {},
   "compilerOptions": {
-    "lib": ["deno.ns", "dom"]
+    "lib": ["deno.ns", "dom"],
+    "moduleResolution": "node",
+    "module": "esnext"
   }
 }
