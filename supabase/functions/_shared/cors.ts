@@ -3,6 +3,16 @@
 // this to your specific frontend domain (e.g., 'https://www.crediteval.com').
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*", // Allow all origins
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", // Allow common headers
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type", // Allow common headers
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PUT, DELETE", // Allow common methods
 };
+
+export function getAllowedCorsHeaders(
+  origin: string | null
+): Record<string, string> {
+  if (origin) {
+    return { ...corsHeaders, "Access-Control-Allow-Origin": origin };
+  }
+  return corsHeaders;
+}

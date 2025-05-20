@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@11.16.0?target=deno&deno-std=0.132.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getAllowedCorsHeaders } from "../_shared/cors.ts";
 
 console.log("Function starting (Payment Intent version)...");
 
@@ -26,7 +25,6 @@ const supabaseAdmin =
 
 serve(async (req) => {
   const origin = req.headers.get("Origin");
-  const corsHeaders = getAllowedCorsHeaders(origin); // Get headers dynamically
 
   // Handle CORS preflight request
   if (req.method === "OPTIONS") {
