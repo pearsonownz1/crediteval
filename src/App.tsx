@@ -1,6 +1,6 @@
 import { Suspense, useEffect } from "react"; // Import useEffect
 import { useRoutes, Routes, Route } from "react-router-dom";
-import { usePostHog } from 'posthog-js/react'; // Import usePostHog
+import { usePostHog } from "posthog-js/react"; // Import usePostHog
 import Layout from "./components/Layout"; // Import the Layout component
 import Home from "./components/home";
 import OrderPage from "./components/OrderPage";
@@ -37,55 +37,203 @@ function App() {
   // Send manual event on component mount
   useEffect(() => {
     if (posthog) {
-      posthog.capture('app_loaded', { component: 'App' });
+      posthog.capture("app_loaded", { component: "App" });
     }
   }, [posthog]);
 
   return (
     <Suspense fallback={<p>Loading...</p>}>
-      <OrderProvider> {/* Wrap Routes with OrderProvider */}
+      <OrderProvider>
+        {" "}
+        {/* Wrap Routes with OrderProvider */}
         <Routes>
           {/* Public Routes with Layout */}
-          <Route path="/" element={<Layout><Home /></Layout>} />
-          <Route path="/translation" element={<Layout><TranslationServices /></Layout>} />
-          <Route path="/evaluation" element={<Layout><EvaluationServices /></Layout>} />
-          <Route path="/expert-opinion" element={<Layout><ExpertOpinionLetters /></Layout>} />
-          <Route path="/about" element={<Layout><AboutUs /></Layout>} />
-          <Route path="/contact" element={<Layout><ContactUs /></Layout>} />
-          <Route path="/quote" element={<Layout><QuotePage /></Layout>} /> {/* Add QuotePage route with Layout */}
-          <Route path="/pricing" element={<Layout><PricingPage /></Layout>} /> {/* Add PricingPage route with Layout */}
-          <Route path="/privacy-policy" element={<Layout><PrivacyPolicy /></Layout>} /> {/* Add Privacy Policy route */}
-          <Route path="/terms-of-service" element={<Layout><TermsOfService /></Layout>} /> {/* Add Terms of Service route */}
-          <Route path="/contact-success" element={<Layout><ContactSuccessPage /></Layout>} /> {/* Add Contact Success route */}
-          <Route path="/faq" element={<Layout><FAQPage /></Layout>} /> {/* Add FAQ route */}
+          <Route
+            path="/"
+            element={
+              <Layout>
+                <Home />
+              </Layout>
+            }
+          />
+          <Route
+            path="/translation"
+            element={
+              <Layout>
+                <TranslationServices />
+              </Layout>
+            }
+          />
+          <Route
+            path="/evaluation"
+            element={
+              <Layout>
+                <EvaluationServices />
+              </Layout>
+            }
+          />
+          <Route
+            path="/expert-opinion"
+            element={
+              <Layout>
+                <ExpertOpinionLetters />
+              </Layout>
+            }
+          />
+          <Route
+            path="/about"
+            element={
+              <Layout>
+                <AboutUs />
+              </Layout>
+            }
+          />
+          <Route
+            path="/contact"
+            element={
+              <Layout>
+                <ContactUs />
+              </Layout>
+            }
+          />
+          <Route
+            path="/quote"
+            element={
+              <Layout>
+                <QuotePage />
+              </Layout>
+            }
+          />{" "}
+          {/* Add QuotePage route with Layout */}
+          <Route
+            path="/pricing"
+            element={
+              <Layout>
+                <PricingPage />
+              </Layout>
+            }
+          />{" "}
+          {/* Add PricingPage route with Layout */}
+          <Route
+            path="/privacy-policy"
+            element={
+              <Layout>
+                <PrivacyPolicy />
+              </Layout>
+            }
+          />{" "}
+          {/* Add Privacy Policy route */}
+          <Route
+            path="/terms-of-service"
+            element={
+              <Layout>
+                <TermsOfService />
+              </Layout>
+            }
+          />{" "}
+          {/* Add Terms of Service route */}
+          <Route
+            path="/contact-success"
+            element={
+              <Layout>
+                <ContactSuccessPage />
+              </Layout>
+            }
+          />{" "}
+          {/* Add Contact Success route */}
+          <Route
+            path="/faq"
+            element={
+              <Layout>
+                <FAQPage />
+              </Layout>
+            }
+          />{" "}
+          {/* Add FAQ route */}
           {/* Add Use Case Routes */}
-          <Route path="/use-cases" element={<Layout><AllUseCases /></Layout>} />
-          <Route path="/use-cases/immigration" element={<Layout><ImmigrationUseCase /></Layout>} />
-          <Route path="/use-cases/academic" element={<Layout><AcademicUseCase /></Layout>} />
-          <Route path="/use-cases/employment" element={<Layout><EmploymentUseCase /></Layout>} />
-
-          {/* <Route path="/faq" element={<Layout><FAQPage /></Layout>} /> */} {/* REMOVED Duplicate FAQ route */}
-          <Route path="/order-wizard" element={<Layout><OrderWizard /></Layout>} /> {/* Add Layout */}
-
+          <Route
+            path="/use-cases"
+            element={
+              <Layout>
+                <AllUseCases />
+              </Layout>
+            }
+          />
+          <Route
+            path="/use-cases/immigration"
+            element={
+              <Layout>
+                <ImmigrationUseCase />
+              </Layout>
+            }
+          />
+          <Route
+            path="/use-cases/academic"
+            element={
+              <Layout>
+                <AcademicUseCase />
+              </Layout>
+            }
+          />
+          <Route
+            path="/use-cases/employment"
+            element={
+              <Layout>
+                <EmploymentUseCase />
+              </Layout>
+            }
+          />
+          {/* <Route path="/faq" element={<Layout><FAQPage /></Layout>} /> */}{" "}
+          {/* REMOVED Duplicate FAQ route */}
+          <Route
+            path="/order-wizard"
+            element={
+              <Layout>
+                <OrderWizard />
+              </Layout>
+            }
+          />{" "}
+          {/* Add Layout */}
           {/* Routes without standard Layout (Auth, Order Process, Admin, Quote Payment) */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          {/* <Route path="/order-wizard" element={<OrderWizard />} /> */} {/* Moved to Layout routes */}
-          <Route path="/order-success" element={<OrderSuccessPage />} /> {/* Existing order success page */}
-          <Route path="/payment-success" element={<PaymentSuccessPage />} /> {/* Add quote payment success route */}
-          <Route path="/quote/:quoteId" element={<QuotePaymentPage />} /> {/* Add quote payment page route */}
-
+          {/* <Route path="/order-wizard" element={<OrderWizard />} /> */}{" "}
+          {/* Moved to Layout routes */}
+          <Route path="/order-success" element={<OrderSuccessPage />} />{" "}
+          {/* Existing order success page */}
+          <Route
+            path="/payment-success"
+            element={<PaymentSuccessPage />}
+          />{" "}
+          {/* Add quote payment success route */}
+          <Route
+            path="/quote-payment/:quoteId"
+            element={<QuotePaymentPage />}
+          />{" "}
+          {/* Add quote payment page route */}
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>
-            <Route path="/order" element={<Layout><OrderPage /></Layout>} /> {/* Add Layout */}
-            {/* <Route path="/order-wizard" element={<OrderWizard />} /> */} {/* Moved to public */}
-            {/* <Route path="/dashboard" element={<AdminDashboard />} /> */} {/* Removed duplicate dashboard route */}
-            <Route path="/admin" element={<AdminDashboard />} /> {/* Keep /admin as the route */}
+            <Route
+              path="/order"
+              element={
+                <Layout>
+                  <OrderPage />
+                </Layout>
+              }
+            />{" "}
+            {/* Add Layout */}
+            {/* <Route path="/order-wizard" element={<OrderWizard />} /> */}{" "}
+            {/* Moved to public */}
+            {/* <Route path="/dashboard" element={<AdminDashboard />} /> */}{" "}
+            {/* Removed duplicate dashboard route */}
+            <Route path="/admin" element={<AdminDashboard />} />{" "}
+            {/* Keep /admin as the route */}
             {/* Add other protected routes here */}
           </Route>
         </Routes>
         {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
-      </OrderProvider> {/* Close OrderProvider */}
+      </OrderProvider>{" "}
+      {/* Close OrderProvider */}
     </Suspense>
   );
 }
