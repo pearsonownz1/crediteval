@@ -1,5 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2"; // Import Supabase client
+import {
+  createClient,
+  SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2"; // Import Supabase client
 import { Resend } from "npm:resend";
 import { corsHeaders } from "../_shared/cors.ts"; // Import the corsHeaders object directly
 
@@ -16,14 +19,16 @@ let supabaseAdmin: SupabaseClient | null = null;
 if (supabaseUrl && supabaseServiceRoleKey) {
   supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 } else {
-  console.error("Missing Supabase URL or Service Role Key environment variables.");
+  console.error(
+    "Missing Supabase URL or Service Role Key environment variables."
+  );
 }
 
 let resend: Resend | null = null;
 if (resendApiKey) {
   resend = new Resend(resendApiKey);
 } else {
-   console.error("Missing RESEND_API_KEY environment variable.");
+  console.error("Missing RESEND_API_KEY environment variable.");
 }
 
 // Define the expected request body structure
@@ -52,14 +57,18 @@ serve(async (req) => {
   }
 
   // --- Check Initialization ---
-   if (!supabaseAdmin || !resend || !fromEmail) {
-    console.error("Missing environment variables (Supabase, Resend, or From Email). Function cannot proceed.");
-    return new Response(JSON.stringify({ error: "Server configuration error." }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500,
-    });
+  if (!supabaseAdmin || !resend || !fromEmail) {
+    console.error(
+      "Missing environment variables (Supabase, Resend, or From Email). Function cannot proceed."
+    );
+    return new Response(
+      JSON.stringify({ error: "Server configuration error." }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      }
+    );
   }
-
 
   try {
     // 2. Parse request body
@@ -67,133 +76,154 @@ serve(async (req) => {
 
     // Validate required fields
     if (!requestData.email || !requestData.name || !requestData.service) {
-      return new Response(JSON.stringify({ error: "Missing required fields (service, name, email)" }), {
-        status: 400,
-        // Include dynamic CORS headers in error response
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          error: "Missing required fields (service, name, email)",
+        }),
+        {
+          status: 400,
+          // Include dynamic CORS headers in error response
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
-     // 3. Insert data into the 'quotes' table
-     console.log("Preparing to insert quote data:", {
+    // 3. Insert data into the 'quotes' table
+    console.log("Preparing to insert quote data:", {
+      name: requestData.name,
+      email: requestData.email,
+      // phone: requestData.phone, // Removed - Column does not exist
+      service_type: requestData.service, // Corrected column name
+      // language_from: requestData.languageFrom, // Removed - Column does not exist
+      // language_to: requestData.languageTo,     // Removed - Column does not exist
+      document_paths: requestData.documentPaths,
+    });
+    const { data: insertData, error: insertError } = await supabaseAdmin
+      .from("quotes")
+      .insert([
+        {
+          name: requestData.name,
+          email: requestData.email,
+          // phone: requestData.phone, // Removed - Column does not exist
+          service_type: requestData.service, // Ensure this uses service_type for DB column
+          // language_from: requestData.languageFrom, // Removed - Column does not exist
+          // language_to: requestData.languageTo,     // Removed - Column does not exist
+          document_paths: requestData.documentPaths,
+          // status: 'new', // Default status is set in the table definition
+          // created_at is set automatically
+        },
+      ])
+      .select() // Optionally select the inserted data if needed
+      .single(); // Assuming you insert one quote at a time
+
+    if (insertError) {
+      console.error("!!! Database Insert Error:", insertError); // Make error more prominent
+      // Log the data that failed to insert
+      console.error("!!! Failed to insert data:", {
         name: requestData.name,
         email: requestData.email,
-        // phone: requestData.phone, // Removed - Column does not exist
-        service_type: requestData.service, // Corrected column name
+        /* phone: requestData.phone, */ service_type: requestData.service, // Corrected column name and removed phone
         // language_from: requestData.languageFrom, // Removed - Column does not exist
         // language_to: requestData.languageTo,     // Removed - Column does not exist
         document_paths: requestData.documentPaths,
-     });
-     const { data: insertData, error: insertError } = await supabaseAdmin
-        .from('quotes')
-        .insert([
-          {
-            name: requestData.name,
-            email: requestData.email,
-            // phone: requestData.phone, // Removed - Column does not exist
-            service_type: requestData.service, // Ensure this uses service_type for DB column
-            // language_from: requestData.languageFrom, // Removed - Column does not exist
-            // language_to: requestData.languageTo,     // Removed - Column does not exist
-            document_paths: requestData.documentPaths,
-            // status: 'new', // Default status is set in the table definition
-            // created_at is set automatically
-          },
-        ])
-        .select() // Optionally select the inserted data if needed
-        .single(); // Assuming you insert one quote at a time
+      });
+      throw new Error(`Database insert error: ${insertError.message}`);
+    }
 
-      if (insertError) {
-        console.error("!!! Database Insert Error:", insertError); // Make error more prominent
-        // Log the data that failed to insert
-        console.error("!!! Failed to insert data:", {
-            name: requestData.name, email: requestData.email, /* phone: requestData.phone, */ service_type: requestData.service, // Corrected column name and removed phone
-            // language_from: requestData.languageFrom, // Removed - Column does not exist
-            // language_to: requestData.languageTo,     // Removed - Column does not exist
-            document_paths: requestData.documentPaths
-        });
-        throw new Error(`Database insert error: ${insertError.message}`);
-      }
+    console.log(
+      "+++ Quote data inserted successfully. Inserted row:",
+      insertData
+    ); // Log success and inserted data
 
-      console.log("+++ Quote data inserted successfully. Inserted row:", insertData); // Log success and inserted data
-
-      // --- Send Klaviyo Event ---
-      if (klaviyoApiKey && klaviyoApiKey !== "YOUR_KLAVIYO_PRIVATE_API_KEY") {
-        const klaviyoPayload = {
-          data: {
-            type: 'event',
-            attributes: {
-              profile: {
-                email: requestData.email,
-                // Optionally add other profile identifiers if available and desired
-                // name: requestData.name, // Klaviyo often uses standard profile properties
-                // phone_number: requestData.phone
-              },
-              metric: {
-                name: 'quote_requested' // Define the new metric name
-              },
-              properties: {
-                // Map relevant properties from the quote request
-                quote_id: insertData.id, // Use the ID from the inserted row
-                service_type: requestData.service,
-                name: requestData.name, // Include name in properties
-                phone: requestData.phone, // Include phone if provided
-                language_from: requestData.languageFrom, // Include language if provided
-                language_to: requestData.languageTo, // Include language if provided
-                document_count: requestData.documentPaths?.length || 0,
-                submitted_at: requestData.submittedAt // Include submission timestamp
-                // Add any other relevant properties from requestData or insertData
-              }
-            }
-          }
-        };
-
-        console.log("Constructed Klaviyo Payload:", JSON.stringify(klaviyoPayload, null, 2));
-
-        try {
-          const klaviyoApiUrl = 'https://a.klaviyo.com/api/events/';
-          const klaviyoResponse = await fetch(klaviyoApiUrl, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'revision': '2023-02-22' // Recommended revision
+    // --- Send Klaviyo Event ---
+    if (klaviyoApiKey && klaviyoApiKey !== "YOUR_KLAVIYO_PRIVATE_API_KEY") {
+      const klaviyoPayload = {
+        data: {
+          type: "event",
+          attributes: {
+            profile: {
+              email: requestData.email,
+              // Optionally add other profile identifiers if available and desired
+              // name: requestData.name, // Klaviyo often uses standard profile properties
+              // phone_number: requestData.phone
             },
-            body: JSON.stringify(klaviyoPayload)
-          });
+            metric: {
+              name: "quote_requested", // Define the new metric name
+            },
+            properties: {
+              // Map relevant properties from the quote request
+              quote_id: insertData.id, // Use the ID from the inserted row
+              service_type: requestData.service,
+              name: requestData.name, // Include name in properties
+              phone: requestData.phone, // Include phone if provided
+              language_from: requestData.languageFrom, // Include language if provided
+              language_to: requestData.languageTo, // Include language if provided
+              document_count: requestData.documentPaths?.length || 0,
+              submitted_at: requestData.submittedAt, // Include submission timestamp
+              // Add any other relevant properties from requestData or insertData
+            },
+          },
+        },
+      };
 
-          console.log(`Klaviyo API Response Status: ${klaviyoResponse.status}`);
-          if (!klaviyoResponse.ok || klaviyoResponse.status !== 202) { // 202 Accepted is success for events
-             const errorText = await klaviyoResponse.text();
-             console.error(`Klaviyo API request failed or returned unexpected status ${klaviyoResponse.status}:`, errorText);
-             // Decide if this should be a critical failure or just logged
-          } else {
-             console.log("Klaviyo event 'quote_requested' sent successfully.");
-          }
-        } catch (klaviyoError) {
-           console.error("Error sending event to Klaviyo:", klaviyoError);
-           // Log error but continue with email sending
+      console.log(
+        "Constructed Klaviyo Payload:",
+        JSON.stringify(klaviyoPayload, null, 2)
+      );
+
+      try {
+        const klaviyoApiUrl = "https://a.klaviyo.com/api/events/";
+        const klaviyoResponse = await fetch(klaviyoApiUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Klaviyo-API-Key ${klaviyoApiKey}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            revision: "2023-02-22", // Recommended revision
+          },
+          body: JSON.stringify(klaviyoPayload),
+        });
+
+        console.log(`Klaviyo API Response Status: ${klaviyoResponse.status}`);
+        if (!klaviyoResponse.ok || klaviyoResponse.status !== 202) {
+          // 202 Accepted is success for events
+          const errorText = await klaviyoResponse.text();
+          console.error(
+            `Klaviyo API request failed or returned unexpected status ${klaviyoResponse.status}:`,
+            errorText
+          );
+          // Decide if this should be a critical failure or just logged
+        } else {
+          console.log("Klaviyo event 'quote_requested' sent successfully.");
         }
-
-      } else {
-         console.warn("Klaviyo API Key missing or placeholder. Skipping Klaviyo event.");
+      } catch (klaviyoError) {
+        console.error("Error sending event to Klaviyo:", klaviyoError);
+        // Log error but continue with email sending
       }
-      // --- End Klaviyo Event ---
-
+    } else {
+      console.warn(
+        "Klaviyo API Key missing or placeholder. Skipping Klaviyo event."
+      );
+    }
+    // --- End Klaviyo Event ---
 
     // 4. Construct Email Content
     const userSubject = "Quote Request Confirmation - CreditEval";
     const userHtmlBody = `
       <h1>Thank you for your quote request, ${requestData.name}!</h1>
-      <p>We have received your request for a quote regarding: <strong>${requestData.service}</strong>.</p>
+      <p>We have received your request for a quote regarding: <strong>${
+        requestData.service
+      }</strong>.</p>
       <p>Details received:</p>
       <ul>
         <li>Name: ${requestData.name}</li>
         <li>Email: ${requestData.email}</li>
         ${requestData.phone ? `<li>Phone: ${requestData.phone}</li>` : ""}
-        ${requestData.documentPaths && requestData.documentPaths.length > 0
-        ? `<li>Documents: ${requestData.documentPaths.length} file(s) received</li>`
-        : ""}
+        ${
+          requestData.documentPaths && requestData.documentPaths.length > 0
+            ? `<li>Documents: ${requestData.documentPaths.length} file(s) received</li>`
+            : ""
+        }
       </ul>
       <p>We will review your request and get back to you shortly.</p>
       <p>Best regards,<br>The CreditEval Team</p>
@@ -204,19 +234,36 @@ serve(async (req) => {
       <h1>New Quote Request</h1>
       <p>A new quote request has been submitted:</p>
       <ul>
-        <li>Service Type: <strong>${requestData.service}</strong></li> <!-- Corrected label -->
+        <li>Service Type: <strong>${
+          requestData.service
+        }</strong></li> <!-- Corrected label -->
         <li>Name: ${requestData.name}</li>
         <li>Email: ${requestData.email}</li>
         ${requestData.phone ? `<li>Phone: ${requestData.phone}</li>` : ""}
-        ${requestData.languageFrom ? `<li>Language From: ${requestData.languageFrom}</li>` : ""}
-        ${requestData.languageTo ? `<li>Language To: ${requestData.languageTo}</li>` : ""}
-        <li>Submitted At: ${new Date(requestData.submittedAt).toLocaleString()}</li>
+        ${
+          requestData.languageFrom
+            ? `<li>Language From: ${requestData.languageFrom}</li>`
+            : ""
+        }
+        ${
+          requestData.languageTo
+            ? `<li>Language To: ${requestData.languageTo}</li>`
+            : ""
+        }
+        <li>Submitted At: ${new Date(
+          requestData.submittedAt
+        ).toLocaleString()}</li>
       </ul>
-      ${requestData.documentPaths && requestData.documentPaths.length > 0
-        ? `<p><strong>Documents (${requestData.documentPaths.length}):</strong></p>
-           <ul>${requestData.documentPaths.map(path => `<li>${path}</li>`).join('')}</ul>
+      ${
+        requestData.documentPaths && requestData.documentPaths.length > 0
+          ? `<p><strong>Documents (${
+              requestData.documentPaths.length
+            }):</strong></p>
+           <ul>${requestData.documentPaths
+             .map((path) => `<li>${path}</li>`)
+             .join("")}</ul>
            <p><em>Note: Document paths refer to storage locations. Access them via your Supabase dashboard or appropriate tools.</em></p>`
-        : "<p>No documents were uploaded with this request.</p>"
+          : "<p>No documents were uploaded with this request.</p>"
       }
       <p>Please follow up with the client.</p>
     `;
@@ -231,52 +278,70 @@ serve(async (req) => {
 
     const sendAdminEmail = resend.emails.send({
       from: fromEmail,
-      to: "support@gcs.org", // Send to support email
+      to: "support@crediteval.com", // Send to support email
       cc: ["staffan@gcs.org", "guy@gcs.org"], // CC additional staff
       subject: adminSubject,
       html: adminHtmlBody,
     });
 
     // Wait for both emails to be sent
-    const [userEmailResult, adminEmailResult] = await Promise.allSettled([sendUserEmail, sendAdminEmail]);
+    const [userEmailResult, adminEmailResult] = await Promise.allSettled([
+      sendUserEmail,
+      sendAdminEmail,
+    ]);
 
     // Check results
-    if (userEmailResult.status === 'rejected') {
-        console.error("Failed to send user email:", userEmailResult.reason);
-        // Decide if this is a critical failure
+    if (userEmailResult.status === "rejected") {
+      console.error("Failed to send user email:", userEmailResult.reason);
+      // Decide if this is a critical failure
     }
-     if (adminEmailResult.status === 'rejected') {
-        console.error("Failed to send admin email:", adminEmailResult.reason);
-        // Decide if this is a critical failure. Maybe return error if admin email fails?
-         return new Response(JSON.stringify({ error: "Failed to send admin notification email." }), {
-            status: 500,
-            // Include dynamic CORS headers in error response
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+    if (adminEmailResult.status === "rejected") {
+      console.error("Failed to send admin email:", adminEmailResult.reason);
+      // Decide if this is a critical failure. Maybe return error if admin email fails?
+      return new Response(
+        JSON.stringify({ error: "Failed to send admin notification email." }),
+        {
+          status: 500,
+          // Include dynamic CORS headers in error response
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
-     if (userEmailResult.status === 'rejected' && adminEmailResult.status === 'rejected') {
-         return new Response(JSON.stringify({ error: "Failed to send both user and admin emails." }), {
-            status: 500,
-            // Include dynamic CORS headers in error response
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-     }
-
+    if (
+      userEmailResult.status === "rejected" &&
+      adminEmailResult.status === "rejected"
+    ) {
+      return new Response(
+        JSON.stringify({ error: "Failed to send both user and admin emails." }),
+        {
+          status: 500,
+          // Include dynamic CORS headers in error response
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
     // 6. Return success response
-    return new Response(JSON.stringify({ message: "Quote request submitted, saved, and emails sent." }), {
-      // Include dynamic CORS headers in success response
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
-
+    return new Response(
+      JSON.stringify({
+        message: "Quote request submitted, saved, and emails sent.",
+      }),
+      {
+        // Include dynamic CORS headers in success response
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      }
+    );
   } catch (error) {
     console.error("Error processing quote request:", error);
-    return new Response(JSON.stringify({ error: error.message || "Internal Server Error" }), {
-      status: 500,
-      // Include dynamic CORS headers in catch block error response
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: error.message || "Internal Server Error" }),
+      {
+        status: 500,
+        // Include dynamic CORS headers in catch block error response
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
   }
 });
