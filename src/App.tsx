@@ -12,7 +12,7 @@ import ContactUs from "./components/ContactUs";
 import Login from "./components/Auth/Login"; // Import Login
 import Register from "./components/Auth/Register"; // Import Register
 import ProtectedRoute from "./components/Auth/ProtectedRoute";
-import AdminDashboard from "./components/AdminDashboard";
+import AdminDashboard from "./pages/AdminDashboard";
 import QuotePage from "./components/QuotePage"; // Import QuotePage
 import OrderWizard from "./components/OrderWizard";
 import OrderSuccessPage from "./components/OrderSuccessPage"; // Import OrderSuccessPage
