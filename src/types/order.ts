@@ -1,45 +1,29 @@
-// Define the document type explicitly for clarity
-export type DocumentState = {
-  id: string; // Unique identifier for state management
-  name: string;
-  size: number;
-  type: string;
-  file: File;
-  status: "pending" | "uploading" | "success" | "error";
-  error?: string;
-  path?: string;
-  progress?: number;
-};
+import { Status } from "./common";
 
-// Define the main OrderData interface
-export interface OrderData {
-  customerInfo: {
-    email: string;
-    firstName: string;
-    lastName: string;
-    phone: string; // Added phone number
-  };
-  documents: DocumentState[];
-  services: {
-    type: string; // Consider using a specific type like ServiceType if defined elsewhere
-    languageFrom: string;
-    languageTo: string;
-    pageCount: number;
-    evaluationType: string; // Consider EvaluationType
-    visaType: string;
-    urgency: string; // Consider UrgencyType
-    specialInstructions: string;
-    deliveryType: string; // Added for delivery options
-    shippingInfo: {
-      country: string;
-      address: string;
-      apartment: string;
-      city: string;
-      state: string;
-      zip: string;
-    };
-  };
-  payment: {
-    method: string;
-  };
+export type ServiceType = "translation" | "evaluation" | "expert";
+
+export interface OrderService {
+  type: ServiceType;
+  urgency?: string;
+  specialInstructions?: string;
+  // Translation specific fields
+  languageFrom?: string;
+  languageTo?: string;
+  pageCount?: number;
+  // Evaluation specific fields
+  evaluationType?: string;
+  // Expert specific fields
+  visaType?: string;
+}
+
+export interface Order {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  status: Status;
+  document_paths?: string[];
+  total_amount: number;
+  created_at: string;
+  services?: OrderService;
 }
