@@ -9,7 +9,7 @@ export const SettingsView: React.FC = () => {
       </CardHeader>
       <CardContent>
         <p className="text-center py-12 text-gray-500">
-          YEPSettings interface will be implemented in the future.
+          Settings interface will be implemented in the future.
         </p>
       </CardContent>
     </Card>
