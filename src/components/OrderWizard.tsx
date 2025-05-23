@@ -47,7 +47,7 @@ import {
   Truck as TruckIcon, // Added for Delivery Details
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
-import { DocumentState, OrderData } from "../types/order"; // Import types
+import { DocumentState, OrderData } from "../types/order-v1"; // Import types
 import OrderSummarySidebar from "./OrderSummarySidebar"; // Import the new sidebar
 import { useOrderContext } from "../contexts/OrderContext"; // Import the context hook
 import EvalynAssistant from "./EvalynAssistant"; // Import the Evalyn component
@@ -453,41 +453,51 @@ const DocumentUploadStep = ({
         console.log(
           `Calling backend function to add document path for order ${orderId}`
         );
-        const functionUrl = `${
-          import.meta.env.VITE_SUPABASE_URL
-        }/functions/v1/update-order-documents`;
 
-        const response = await fetch(functionUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({
-            orderId: String(orderId),
-            documentPath: newPath,
-          }),
-        });
+        // Check if orderId is available before constructing functionUrl
+        if (orderId) {
+          const functionUrl = `${
+            import.meta.env.VITE_SUPABASE_URL
+          }/functions/v1/update-order-documents`;
 
-        if (!response.ok) {
-          const errorBody = await response.json().catch(() => ({
-            error: "Failed to parse error response from function",
-          }));
-          console.error(
-            `Backend function error updating document_paths for order ${orderId}:`,
-            errorBody
+          const response = await fetch(functionUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({
+              orderId: String(orderId), // Ensure orderId is a string
+              documentPath: newPath,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorBody = await response.json().catch(() => ({
+              error: "Failed to parse error response from function",
+            }));
+            console.error(
+              `Backend function error updating document_paths for order ${orderId}:`,
+              errorBody
+            );
+            throw new Error(
+              errorBody.error ||
+                `Function call failed with status ${response.status}`
+            );
+          }
+
+          const result = await response.json();
+          console.log(
+            `Backend function successfully updated document_paths for order ${orderId}:`,
+            result
           );
-          throw new Error(
-            errorBody.error ||
-              `Function call failed with status ${response.status}`
-          );
+        } else {
+          console.error("Order ID is missing, cannot call backend function.");
+          updateDocumentStatusById(id, {
+            status: "error",
+            error: "Order ID missing, cannot link document.",
+          });
         }
-
-        const result = await response.json();
-        console.log(
-          `Backend function successfully updated document_paths for order ${orderId}:`,
-          result
-        );
       } catch (functionError: any) {
         console.error(
           "Error calling update-order-documents function:",
@@ -1181,10 +1191,12 @@ const ReviewStep = ({ orderData }: ReviewStepProps) => {
   };
 
   // Re-define calculateReviewPrice locally within ReviewStep for display purposes
-  const calculateReviewPrice = (reviewOrderData: OrderData) => {
+  const calculateReviewPrice = (currentOrderData: OrderData): number => {
     let totalPrice = 0;
-    const { type, pageCount, evaluationType } = reviewOrderData.services;
+    const { type, pageCount, evaluationType, deliveryType } =
+      currentOrderData.services;
 
+    // Service Costs
     if (type === "translation") {
       const pages = Math.max(1, pageCount || 1);
       totalPrice += pages * 25;
@@ -1192,22 +1204,34 @@ const ReviewStep = ({ orderData }: ReviewStepProps) => {
       if (evaluationType === "document") {
         totalPrice += 85;
       } else if (evaluationType === "course") {
-        totalPrice += 150;
+        totalPrice += 150; // Placeholder price
       }
     } else if (type === "expert") {
-      totalPrice += 599;
+      totalPrice += 599; // Expert Opinion Letter base price
     }
+    // Note: 'both' type removed for simplicity with 'expert' addition.
+    // If 'both' is needed, logic needs adjustment.
 
-    switch (reviewOrderData.services.urgency) {
+    // Urgency Multiplier
+    switch (currentOrderData.services.urgency) {
       case "expedited":
         totalPrice *= 1.5;
         break;
       case "rush":
         totalPrice *= 2;
         break;
+      case "standard": // No change for standard
       default:
-        break;
+        break; // No change
     }
+
+    // Delivery Costs
+    if (deliveryType === "express") {
+      totalPrice += 99;
+    } else if (deliveryType === "international") {
+      totalPrice += 150;
+    }
+    console.log({ totalPrice });
     return totalPrice;
   };
 
@@ -1820,6 +1844,8 @@ const OrderWizard = ({
             amount: calculatedAmount,
             orderId: orderId,
             services: orderData.services,
+            currency: "usd",
+            isQuote: false,
           }),
         });
 
