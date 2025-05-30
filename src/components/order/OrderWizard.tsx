@@ -13,7 +13,7 @@ import EvalynAssistant from "../EvalynAssistant";
 import OrderSummarySidebar from "../OrderSummarySidebar";
 
 // Hooks
-import { useOrderData } from "./hooks/useOrderData";
+import { useOrderData, initialOrderData } from "./hooks/useOrderData";
 import { usePaymentProcessing } from "./hooks/usePaymentProcessing";
 import { useOrderValidation } from "./hooks/useOrderValidation";
 
@@ -31,9 +31,15 @@ import { PaymentStep } from "./steps/PaymentStep";
 
 // Utils and Constants
 import { createOrder } from "../../utils/order/orderAPI";
-import { trackCheckoutStarted } from "../../utils/order/klaviyoTracking";
+import {
+  trackCheckoutStarted,
+  trackServiceSelected,
+  trackAddPaymentInfo,
+  trackPurchase,
+} from "../../utils/analytics"; // Import GA4 tracking functions
+import { calculatePrice } from "../../utils/order/priceCalculation"; // Import price calculation utility
 import { TOTAL_STEPS } from "../../constants/order/steps";
-import { OrderWizardProps } from "../../types/order";
+import { OrderWizardProps } from "../../types/order/index"; // Corrected import path
 
 const OrderWizard: React.FC<OrderWizardProps> = ({
   onComplete = () => {},
@@ -65,8 +71,21 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
         if (newOrderId) {
           setOrderId(newOrderId);
 
-          // Track checkout started with Klaviyo
-          await trackCheckoutStarted(orderData, newOrderId);
+          // Track checkout started with GA4
+          console.log(
+            "OrderWizard: orderData before calculatePrice:",
+            orderData
+          );
+          console.log(
+            "OrderWizard: orderData.services before calculatePrice:",
+            orderData.services
+          );
+
+          // Ensure orderData.services is not undefined before passing to calculatePrice
+          const servicesToCalculate =
+            orderData.services || initialOrderData.services;
+          const calculatedPrice = calculatePrice(servicesToCalculate);
+          trackCheckoutStarted(orderData, newOrderId, calculatedPrice);
 
           setCurrentStep(currentStep + 1);
         } else {
@@ -83,11 +102,15 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
     }
     // Final Step: Payment Processing
     else if (currentStep === TOTAL_STEPS - 1) {
+      const calculatedPrice = calculatePrice(orderData.services);
+      trackAddPaymentInfo(orderData, orderId!, calculatedPrice); // Track payment info before processing
+
       const success = await processPayment(orderData, orderId!, onComplete);
       if (!success) {
         // Error handling is done within processPayment
         return;
       }
+      // trackPurchase will be called inside usePaymentProcessing upon success
     }
     // Other Steps: Just move forward
     else if (currentStep < TOTAL_STEPS - 1) {

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react"; // Combined React and useEffect import
 import { Label } from "../../ui/label";
 import {
   Select,
@@ -11,13 +11,14 @@ import { Input } from "../../ui/input";
 import { Textarea } from "../../ui/textarea";
 import { Checkbox } from "../../ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
-import { ServiceInfo } from "../../../types/order";
+import { ServiceInfo } from "../../../types/order/index"; // Corrected import path
 import {
   SERVICE_TYPES,
   LANGUAGES,
   VISA_TYPES,
   URGENCY_OPTIONS,
 } from "../../../constants/order/serviceOptions";
+import { trackServiceSelected } from "../../../utils/analytics"; // Import GA4 tracking function
 
 interface ServiceSelectionStepProps {
   data: ServiceInfo;
@@ -28,6 +29,12 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
   data,
   updateData,
 }) => {
+  useEffect(() => {
+    if (data.type) {
+      trackServiceSelected(data.type, data);
+    }
+  }, [data.type, data]); // Re-run when service type changes
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">

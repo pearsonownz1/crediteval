@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../ui/select";
-import { ServiceInfo } from "../../../types/order";
+import { ServiceInfo } from "../../../types/order/services";
 import { DELIVERY_OPTIONS } from "../../../constants/order/serviceOptions";
 import { COUNTRIES } from "../../../constants/order/countries";
 
@@ -21,6 +21,12 @@ export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
   data,
   updateData,
 }) => {
+  // Defensive check: If data is null or undefined, return null or a loading indicator
+  if (!data) {
+    console.warn("DeliveryDetailsStep received undefined or null data prop.");
+    return null; // Or a loading spinner, or an error message
+  }
+
   return (
     <div className="space-y-6">
       <h3 className="text-lg font-medium">Delivery Details</h3>

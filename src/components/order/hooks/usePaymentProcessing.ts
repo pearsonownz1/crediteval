@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { useStripe, useElements, CardElement } from "@stripe/react-stripe-js";
 import { useNavigate } from "react-router-dom";
-import { OrderData } from "../../../types/order";
+import { OrderData } from "../../../types/order/index"; // Corrected import path
 import { calculatePrice } from "../../../utils/order/priceCalculation";
 import {
   updateOrderWithServices,
   callPaymentIntent,
   sendReceiptEmail,
 } from "../../../utils/order/orderAPI";
+import { trackPurchase } from "../../../utils/analytics"; // Import GA4 tracking function
 
 export const usePaymentProcessing = () => {
   const [paymentProcessing, setPaymentProcessing] = useState(false);
@@ -42,7 +43,9 @@ export const usePaymentProcessing = () => {
       await updateOrderWithServices(orderId, orderData.services);
 
       // Create payment intent
-      const calculatedAmount = Math.round(calculatePrice(orderData) * 100);
+      const calculatedAmount = Math.round(
+        calculatePrice(orderData.services) * 100
+      );
       const { clientSecret, error: backendError } = await callPaymentIntent(
         orderId,
         calculatedAmount,
@@ -74,6 +77,9 @@ export const usePaymentProcessing = () => {
       }
 
       if (paymentIntent?.status === "succeeded") {
+        const calculatedPrice = calculatedAmount / 100; // Convert cents back to dollars
+        trackPurchase(orderData, orderId, calculatedPrice, paymentIntent.id); // Track successful purchase
+
         // Send receipt email asynchronously
         sendReceiptEmail(orderId);
 

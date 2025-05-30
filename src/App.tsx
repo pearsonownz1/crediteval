@@ -14,7 +14,8 @@ import Register from "./components/Auth/Register"; // Import Register
 import ProtectedRoute from "./components/Auth/ProtectedRoute";
 import AdminDashboard from "./pages/AdminDashboard";
 import QuotePage from "./components/QuotePage"; // Import QuotePage
-import OrderWizard from "./pages/OrderWizard";
+// import OrderWizard from "./pages/OrderWizard";
+import OrderWizard from "./components/order/OrderWizard";
 import OrderSuccessPage from "./components/OrderSuccessPage"; // Import OrderSuccessPage
 import PricingPage from "./components/PricingPage"; // Import PricingPage
 import PrivacyPolicy from "./components/PrivacyPolicy"; // Import PrivacyPolicy

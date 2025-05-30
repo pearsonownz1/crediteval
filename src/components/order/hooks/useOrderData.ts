@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { OrderData, DocumentState } from "../../../types/order";
+import { OrderData } from "../../../types/order";
+import { DocumentState } from "../../../types/order/documents";
 
-const initialOrderData: OrderData = {
+export const initialOrderData: OrderData = {
   customerInfo: {
     email: "",
     firstName: "",

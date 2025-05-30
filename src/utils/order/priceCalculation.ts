@@ -1,9 +1,8 @@
-import { OrderData } from "../../types/order";
+import { ServiceInfo } from "../../types/order/services"; // Import ServiceInfo
 
-export const calculatePrice = (orderData: OrderData): number => {
+export const calculatePrice = (services: ServiceInfo): number => {
   let totalPrice = 0;
-  const { type, pageCount, evaluationType, deliveryType, urgency } =
-    orderData.services;
+  const { type, pageCount, evaluationType, deliveryType, urgency } = services; // Destructure directly from services
 
   // Service Costs
   if (type === "translation") {
