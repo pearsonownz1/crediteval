@@ -1,4 +1,4 @@
-import { OrderData } from "../../../types/order";
+import { OrderData } from "../../../types/order/index"; // Corrected import path
 
 export const useOrderValidation = () => {
   const validateCustomerInfo = (

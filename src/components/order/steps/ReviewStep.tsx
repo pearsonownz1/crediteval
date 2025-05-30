@@ -1,5 +1,5 @@
 import React from "react";
-import { OrderData, DocumentState } from "../../../types/order";
+import { OrderData, DocumentState } from "../../../types/order/index"; // Corrected import path
 import { calculatePrice } from "../../../utils/order/priceCalculation";
 
 interface ReviewStepProps {
@@ -33,7 +33,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ orderData }) => {
     }
   };
 
-  const calculatedPrice = calculatePrice(orderData);
+  const calculatedPrice = calculatePrice(orderData.services); // Pass orderData.services
 
   return (
     <div className="space-y-6">

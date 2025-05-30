@@ -1,3 +1,5 @@
+import { OrderData } from "../types/order/index"; // Import OrderData
+
 export interface GAOrderData {
   transaction_id: string;
   value: number;
@@ -21,7 +23,7 @@ export const trackGA4Event = (eventName: string, parameters: any) => {
 };
 
 export const formatOrderForGA4 = (
-  orderData: any,
+  orderData: OrderData, // Changed type to OrderData
   orderId: string,
   calculatedPrice: number
 ): GAOrderData => {
@@ -30,7 +32,7 @@ export const formatOrderForGA4 = (
 
   // Calculate delivery fees and adjust main service price
   let deliveryPrice = 0;
-  if (orderData.services.deliveryType === "express") {
+  if (orderData.services?.deliveryType === "express") {
     deliveryPrice = 99;
     items.push({
       item_id: "express_delivery",
@@ -39,7 +41,7 @@ export const formatOrderForGA4 = (
       quantity: 1,
       price: deliveryPrice,
     });
-  } else if (orderData.services.deliveryType === "international") {
+  } else if (orderData.services?.deliveryType === "international") {
     deliveryPrice = 150;
     items.push({
       item_id: "international_delivery",
@@ -53,31 +55,33 @@ export const formatOrderForGA4 = (
   mainServicePrice -= deliveryPrice;
 
   // Create item based on service type
-  if (orderData.services.type === "translation") {
+  if (orderData.services?.type === "translation") {
     items.push({
       item_id: "translation",
-      item_name: `Certified Translation (${orderData.services.languageFrom} to ${orderData.services.languageTo})`,
+      item_name: `Certified Translation (${
+        orderData.services?.languageFrom || "N/A"
+      } to ${orderData.services?.languageTo || "N/A"})`,
       category: "Translation Services",
-      quantity: orderData.services.pageCount || 1,
+      quantity: orderData.services?.pageCount || 1,
       price: mainServicePrice,
     });
-  } else if (orderData.services.type === "evaluation") {
+  } else if (orderData.services?.type === "evaluation") {
     const evaluationType =
-      orderData.services.evaluationType === "course"
+      orderData.services?.evaluationType === "course"
         ? "Course-by-Course"
         : "Document-by-Document";
     items.push({
-      item_id: `evaluation_${orderData.services.evaluationType}`,
+      item_id: `evaluation_${orderData.services?.evaluationType || "N/A"}`,
       item_name: `Credential Evaluation (${evaluationType})`,
       category: "Evaluation Services",
       quantity: 1,
       price: mainServicePrice,
     });
-  } else if (orderData.services.type === "expert") {
+  } else if (orderData.services?.type === "expert") {
     items.push({
       item_id: "expert_opinion",
       item_name: `Expert Opinion Letter (${
-        orderData.services.visaType || "Various"
+        orderData.services?.visaType || "Various"
       })`,
       category: "Expert Services",
       quantity: 1,
@@ -97,7 +101,7 @@ export const formatOrderForGA4 = (
 
 // Track when user starts checkout (in handleNext for step 0)
 export const trackCheckoutStarted = (
-  orderData: any,
+  orderData: OrderData, // Changed type to OrderData
   orderId: string,
   calculatedPrice: number
 ) => {
@@ -113,7 +117,7 @@ export const trackCheckoutStarted = (
 // Track when user adds service selection (step 1)
 export const trackServiceSelected = (
   serviceType: string,
-  serviceDetails: any
+  serviceDetails: any // This type might need refinement based on actual usage
 ) => {
   trackGA4Event("add_to_cart", {
     currency: "USD",
@@ -131,7 +135,7 @@ export const trackServiceSelected = (
 
 // Track payment info entry (step 4)
 export const trackAddPaymentInfo = (
-  orderData: any,
+  orderData: OrderData, // Changed type to OrderData
   orderId: string,
   calculatedPrice: number
 ) => {
@@ -147,7 +151,7 @@ export const trackAddPaymentInfo = (
 
 // Track successful purchase
 export const trackPurchase = (
-  orderData: any,
+  orderData: OrderData, // Changed type to OrderData
   orderId: string,
   calculatedPrice: number,
   paymentIntentId: string
@@ -159,7 +163,7 @@ export const trackPurchase = (
     value: calculatedPrice,
     currency: "USD",
     payment_type: "credit_card",
-    shipping_tier: orderData.services.deliveryType,
+    shipping_tier: orderData.services?.deliveryType, // Added optional chaining
     items: gaData.items,
   });
 
@@ -167,9 +171,9 @@ export const trackPurchase = (
   trackGA4Event("order_completed", {
     order_id: orderId,
     payment_intent_id: paymentIntentId,
-    service_type: orderData.services.type,
-    urgency: orderData.services.urgency,
-    delivery_type: orderData.services.deliveryType,
+    service_type: orderData.services?.type, // Added optional chaining
+    urgency: orderData.services?.urgency, // Added optional chaining
+    delivery_type: orderData.services?.deliveryType, // Added optional chaining
     value: calculatedPrice,
   });
 };

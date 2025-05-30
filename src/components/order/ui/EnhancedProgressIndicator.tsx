@@ -11,7 +11,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { STEP_TITLES, TOTAL_STEPS } from "../../../constants/order/steps";
-import { OrderData } from "../../../types/order";
+import { OrderData } from "../../../types/order/index"; // Corrected import path
 import { getStepCompletionStatus } from "../../../utils/order/stepValidation";
 
 interface EnhancedProgressIndicatorProps {

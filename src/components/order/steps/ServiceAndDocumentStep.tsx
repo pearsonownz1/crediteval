@@ -2,7 +2,7 @@ import React from "react";
 import { TooltipProvider } from "../../ui/tooltip";
 import { ServiceSelectionStep } from "./ServiceSelectionStep";
 import { DocumentUploadStep } from "./DocumentUploadStep";
-import { ServiceInfo, DocumentState } from "../../../types/order";
+import { ServiceInfo, DocumentState } from "../../../types/order/index"; // Corrected import path
 
 interface ServiceAndDocumentStepProps {
   serviceData: ServiceInfo;

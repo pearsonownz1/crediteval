@@ -1,52 +1,11 @@
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { OrderData } from "../types/order"; // Import from the new types file
+import { OrderData } from "../types/order/index"; // Import from the central types file
+import { calculatePrice } from "../utils/order/priceCalculation"; // Import the shared utility
 
 interface OrderSummarySidebarProps {
   orderData: OrderData;
 }
-
-// Helper function to calculate price (copied from OrderWizard)
-const calculatePrice = (currentOrderData: OrderData): number => {
-  let totalPrice = 0;
-  const { type, pageCount, evaluationType } = currentOrderData.services;
-
-  // Service Costs
-  if (type === "translation") {
-    const pages = Math.max(1, pageCount || 1);
-    totalPrice += pages * 25;
-  } else if (type === "evaluation") {
-    if (evaluationType === "document") {
-      totalPrice += 85;
-    } else if (evaluationType === "course") {
-      totalPrice += 150;
-    }
-  } else if (type === "expert") {
-    totalPrice += 599;
-  }
-
-  // Urgency Multiplier
-  switch (currentOrderData.services.urgency) {
-    case "expedited":
-      totalPrice *= 1.5;
-      break;
-    case "rush":
-      totalPrice *= 2;
-      break;
-    case "standard":
-    default:
-      break;
-  }
-
-  // Delivery Costs
-  if (currentOrderData.services.deliveryType === "express") {
-    totalPrice += 99;
-  } else if (currentOrderData.services.deliveryType === "international") {
-    totalPrice += 150;
-  }
-
-  return totalPrice;
-};
 
 // Helper function to get service text (copied from OrderWizard ReviewStep)
 const getServiceTypeText = (orderData: OrderData) => {
@@ -79,7 +38,7 @@ const getUrgencyText = (orderData: OrderData) => {
 const OrderSummarySidebar: React.FC<OrderSummarySidebarProps> = ({
   orderData,
 }) => {
-  const calculatedPrice = calculatePrice(orderData);
+  const calculatedPrice = calculatePrice(orderData.services); // Pass orderData.services
   const serviceType = getServiceTypeText(orderData);
   const urgency = getUrgencyText(orderData);
   const { type, pageCount, evaluationType, languageFrom, languageTo } =

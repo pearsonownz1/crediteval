@@ -31,7 +31,8 @@ import { PaymentStep } from "../components/order/steps/PaymentStep";
 
 // Utils and Constants
 import { createOrder } from "../utils/order/orderAPI";
-import { trackCheckoutStarted } from "../utils/order/klaviyoTracking";
+import { trackCheckoutStarted } from "../utils/analytics"; // Changed import to analytics.ts
+import { calculatePrice } from "../utils/order/priceCalculation"; // Import calculatePrice
 import { TOTAL_STEPS } from "../constants/order/steps";
 import { OrderWizardProps } from "../types/order/index";
 
@@ -66,7 +67,8 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
           setOrderId(newOrderId);
 
           // Track checkout started with Klaviyo
-          await trackCheckoutStarted(orderData, newOrderId);
+          const calculatedPrice = calculatePrice(orderData.services); // Calculate price
+          await trackCheckoutStarted(orderData, newOrderId, calculatedPrice); // Pass calculatedPrice
 
           setCurrentStep(currentStep + 1);
         } else {

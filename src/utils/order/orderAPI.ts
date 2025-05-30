@@ -1,5 +1,5 @@
 import { supabase } from "../../lib/supabaseClient";
-import { CustomerInfo } from "../../types/order";
+import { CustomerInfo } from "../../types/order/index"; // Corrected import path
 
 export const createOrder = async (customerInfo: CustomerInfo) => {
   const { data, error } = await supabase

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { OrderData } from "../../../types/order";
+import { OrderData } from "../../../types/order/index"; // Corrected import path
 import { DocumentState } from "../../../types/order/documents";
 
 export const initialOrderData: OrderData = {
@@ -11,15 +11,10 @@ export const initialOrderData: OrderData = {
   },
   documents: [] as DocumentState[],
   services: {
-    type: "",
-    languageFrom: "",
-    languageTo: "",
-    pageCount: 1,
-    evaluationType: "",
-    visaType: "",
-    urgency: "standard",
-    specialInstructions: "",
-    deliveryType: "email",
+    // type will be undefined initially, as it's optional in ServiceInfo
+    pageCount: 1, // Keep pageCount as it has a default value
+    urgency: "standard", // Keep urgency as it has a default value
+    deliveryType: "email", // Keep deliveryType as it has a default value
     shippingInfo: {
       country: "",
       address: "",

@@ -1,4 +1,4 @@
-import { OrderData } from "../../types/order";
+import { OrderData } from "../../types/order/index"; // Corrected import path
 import { calculatePrice } from "./priceCalculation";
 
 export const trackCheckoutStarted = async (
@@ -22,7 +22,7 @@ export const trackCheckoutStarted = async (
       const klaviyoApiKey = import.meta.env.VITE_KLAVIYO_PRIVATE_API_KEY;
 
       if (klaviyoApiKey) {
-        const estimatedPrice = calculatePrice(orderData);
+        const estimatedPrice = calculatePrice(orderData.services);
         const resumeLink = `${window.location.origin}/checkout?resume_token=${orderId}`;
 
         const eventPayload = {
