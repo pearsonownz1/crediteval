@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Card,
@@ -16,6 +16,7 @@ import OrderSummarySidebar from "../OrderSummarySidebar";
 import { useOrderData, initialOrderData } from "./hooks/useOrderData";
 import { usePaymentProcessing } from "./hooks/usePaymentProcessing";
 import { useOrderValidation } from "./hooks/useOrderValidation";
+import { useAbandonedCartTracking } from "./hooks/useAbandonedCartTracking";
 
 // UI Components
 import { ProgressIndicator } from "./ui/ProgressIndicator";
@@ -36,10 +37,10 @@ import {
   trackServiceSelected,
   trackAddPaymentInfo,
   trackPurchase,
-} from "../../utils/analytics"; // Import GA4 tracking functions
-import { calculatePrice } from "../../utils/order/priceCalculation"; // Import price calculation utility
+} from "../../utils/analytics";
+import { calculatePrice } from "../../utils/order/priceCalculation";
 import { TOTAL_STEPS } from "../../constants/order/steps";
-import { OrderWizardProps } from "../../types/order/index"; // Corrected import path
+import { OrderWizardProps } from "../../types/order/index";
 
 const OrderWizard: React.FC<OrderWizardProps> = ({
   onComplete = () => {},
@@ -53,6 +54,77 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
   const { paymentProcessing, error, setError, processPayment, isStripeReady } =
     usePaymentProcessing();
   const { validateCustomerInfo } = useOrderValidation();
+
+  // Initialize abandoned cart tracking
+  const { markAsActive, stopTracking } = useAbandonedCartTracking(
+    {
+      customerInfo: orderData.customerInfo,
+      services: orderData.services,
+      currentStep,
+    },
+    {
+      delay: 10000, // 10 seconds for testing purposes
+      enabled: true,
+    }
+  );
+
+  // Check for pre-filled data from URL parameters (for resume functionality)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+
+    // Pre-fill customer info from URL params
+    const firstName = urlParams.get("firstName");
+    const lastName = urlParams.get("lastName");
+    const email = urlParams.get("email");
+    const phone = urlParams.get("phone");
+    const company = urlParams.get("company");
+
+    if (firstName || lastName || email || phone || company) {
+      const prefilledCustomerInfo = {
+        ...orderData.customerInfo,
+        ...(firstName && { firstName }),
+        ...(lastName && { lastName }),
+        ...(email && { email }),
+        ...(phone && { phone }),
+        ...(company && { company }),
+      };
+      updateOrderData("customerInfo", prefilledCustomerInfo);
+    }
+
+    // Pre-fill service info from URL params
+    const service = urlParams.get("service");
+    const urgency = urlParams.get("urgency");
+    const delivery = urlParams.get("delivery");
+
+    if (service || urgency || delivery) {
+      const prefilledServices = {
+        ...orderData.services,
+        ...(service && { selectedService: service }),
+        ...(urgency && { urgency }),
+        ...(delivery && { deliveryMethod: delivery }),
+      };
+      updateOrderData("services", prefilledServices);
+    }
+
+    // Set initial step from URL params
+    const stepParam = urlParams.get("step");
+    if (stepParam) {
+      const step = parseInt(stepParam, 10);
+      if (!isNaN(step) && step >= 0 && step < TOTAL_STEPS) {
+        setCurrentStep(step);
+      }
+    }
+
+    // Mark as active since user has returned/loaded the page
+    markAsActive();
+  }, [markAsActive, updateOrderData]);
+
+  // Stop tracking when component unmounts or order is completed
+  useEffect(() => {
+    return () => {
+      stopTracking();
+    };
+  }, [stopTracking]);
 
   const handleNext = async () => {
     setError(null);
@@ -88,6 +160,9 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
           trackCheckoutStarted(orderData, newOrderId, calculatedPrice);
 
           setCurrentStep(currentStep + 1);
+
+          // Mark as active since user is progressing through the form
+          markAsActive();
         } else {
           throw new Error("Failed to create order or retrieve ID.");
         }
@@ -103,24 +178,30 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
     // Final Step: Payment Processing
     else if (currentStep === TOTAL_STEPS - 1) {
       const calculatedPrice = calculatePrice(orderData.services);
-      trackAddPaymentInfo(orderData, orderId!, calculatedPrice); // Track payment info before processing
+      trackAddPaymentInfo(orderData, orderId!, calculatedPrice);
 
       const success = await processPayment(orderData, orderId!, onComplete);
-      if (!success) {
-        // Error handling is done within processPayment
-        return;
+      if (success) {
+        // Stop abandoned cart tracking on successful completion
+        stopTracking();
       }
-      // trackPurchase will be called inside usePaymentProcessing upon success
+      // Error handling is done within processPayment
     }
     // Other Steps: Just move forward
     else if (currentStep < TOTAL_STEPS - 1) {
       setCurrentStep(currentStep + 1);
+
+      // Mark as active since user is progressing
+      markAsActive();
     }
   };
 
   const handleBack = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
+
+      // Mark as active since user is interacting
+      markAsActive();
     }
   };
 
@@ -130,7 +211,11 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
         return (
           <CustomerInfoStep
             data={orderData.customerInfo}
-            updateData={(data) => updateOrderData("customerInfo", data)}
+            updateData={(data) => {
+              updateOrderData("customerInfo", data);
+              // Mark as active when user updates data
+              markAsActive();
+            }}
             error={error}
           />
         );
@@ -138,9 +223,17 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
         return (
           <ServiceAndDocumentStep
             serviceData={orderData.services}
-            updateServiceData={(data) => updateOrderData("services", data)}
+            updateServiceData={(data) => {
+              updateOrderData("services", data);
+              // Mark as active when user updates data
+              markAsActive();
+            }}
             documents={orderData.documents}
-            updateDocuments={updateDocuments}
+            updateDocuments={(docs) => {
+              updateDocuments(docs);
+              // Mark as active when user updates data
+              markAsActive();
+            }}
             orderId={orderId}
           />
         );
@@ -148,7 +241,11 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
         return (
           <DeliveryDetailsStep
             data={orderData.services}
-            updateData={(data) => updateOrderData("services", data)}
+            updateData={(data) => {
+              updateOrderData("services", data);
+              // Mark as active when user updates data
+              markAsActive();
+            }}
           />
         );
       case 3:
