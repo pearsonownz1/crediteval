@@ -21,6 +21,7 @@ interface OrderData {
     deliveryMethod?: string;
   };
   currentStep?: number;
+  orderId?: string; // Add orderId to OrderData type
 }
 
 export const useAbandonedCartTracking = (
@@ -33,89 +34,82 @@ export const useAbandonedCartTracking = (
   const isActiveRef = useRef<boolean>(true);
 
   // Function to send abandoned cart email
-  const sendAbandonedCartEmail = useCallback(async () => {
-    // Don't send if email already sent for this session
-    if (emailSentRef.current) {
-      console.log("Abandoned cart email already sent for this session");
-      return;
-    }
-
-    // Don't send if no email provided
-    if (!orderData.customerInfo?.email) {
-      console.log("No email provided, skipping abandoned cart email");
-      return;
-    }
-
-    // Don't send if user hasn't filled any meaningful data
-    const hasMinimalData =
-      orderData.customerInfo.firstName ||
-      orderData.customerInfo.lastName ||
-      orderData.services?.selectedService;
-
-    if (!hasMinimalData) {
-      console.log("Insufficient data to send abandoned cart email");
-      return;
-    }
-
-    try {
-      console.log("Sending abandoned cart email...");
-
-      // const response = await fetch("/api/send-abandoned-cart-email", {
-      //   method: "POST",
-      //   headers: {
-      //     "Content-Type": "application/json",
-      //   },
-      //   body: JSON.stringify({
-      //     orderData,
-      //     sessionId: sessionIdRef.current,
-      //   }),
-      // });
-
-      const response = await supabase.functions.invoke(
-        "send-abandoned-cart-email",
-        {
-          body: {
-            orderData,
-            sessionId: sessionIdRef.current,
-          },
-        }
-      );
-
-      const result = await response.json();
-
-      if (response.ok) {
-        console.log("Abandoned cart email sent successfully:", result);
-        emailSentRef.current = true;
-      } else {
-        console.error("Failed to send abandoned cart email:", result);
+  const sendAbandonedCartEmail = useCallback(
+    async (currentOrderData: OrderData) => {
+      // Don't send if email already sent for this session
+      if (emailSentRef.current) {
+        console.log("Abandoned cart email already sent for this session");
+        return;
       }
-    } catch (error) {
-      console.error("Error sending abandoned cart email:", error);
-    }
-  }, [orderData]);
+
+      // Don't send if no email provided
+      if (!currentOrderData.customerInfo?.email) {
+        console.log("No email provided, skipping abandoned cart email");
+        return;
+      }
+
+      // Don't send if user hasn't filled any meaningful data
+      const hasMinimalData =
+        currentOrderData.customerInfo.firstName ||
+        currentOrderData.customerInfo.lastName ||
+        currentOrderData.services?.selectedService;
+
+      if (!hasMinimalData) {
+        console.log("Insufficient data to send abandoned cart email");
+        return;
+      }
+
+      try {
+        console.log("Sending abandoned cart email...");
+
+        const { data, error } = await supabase.functions.invoke(
+          "send-abandoned-cart-email",
+          {
+            body: {
+              orderData: currentOrderData, // Use the passed argument
+              sessionId: sessionIdRef.current,
+            },
+          }
+        );
+
+        if (!error) {
+          console.log("Abandoned cart email sent successfully:", data);
+          emailSentRef.current = true;
+        } else {
+          console.error("Failed to send abandoned cart email:", error);
+        }
+      } catch (error) {
+        console.error("Error sending abandoned cart email:", error);
+      }
+    },
+    []
+  ); // Removed orderData from dependencies
 
   // Reset timeout when user activity is detected
-  const resetTimeout = useCallback(() => {
-    if (!config.enabled || !isActiveRef.current) return;
+  const resetTimeout = useCallback(
+    (currentOrderData: OrderData) => {
+      if (!config.enabled || !isActiveRef.current) return;
 
-    // Clear existing timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
+      // Clear existing timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
 
-    // Set new timeout
-    timeoutRef.current = setTimeout(() => {
-      sendAbandonedCartEmail();
-    }, config.delay);
-  }, [config.delay, config.enabled, sendAbandonedCartEmail]);
+      // Set new timeout
+      timeoutRef.current = setTimeout(() => {
+        sendAbandonedCartEmail(currentOrderData); // Pass orderData here
+      }, config.delay);
+    },
+    [config.delay, config.enabled]
+  ); // Removed sendAbandonedCartEmail from dependencies
 
   // Function to mark as active (user returned to page)
-  const markAsActive = useCallback(() => {
+  const markAsActive = useCallback((currentOrderData: OrderData) => {
     isActiveRef.current = true;
     emailSentRef.current = false; // Reset email sent flag when user returns
     sessionIdRef.current = uuidv4(); // Generate new session ID
-    resetTimeout();
-  }, [resetTimeout]);
+    resetTimeout(currentOrderData); // Pass orderData here
+  }, []); // Removed resetTimeout from dependencies
 
   // Function to stop tracking (user completed order or left permanently)
   const stopTracking = useCallback(() => {
@@ -131,14 +125,14 @@ export const useAbandonedCartTracking = (
     if (!config.enabled) return;
 
     const handleActivity = () => {
-      resetTimeout();
+      resetTimeout(orderData); // Pass orderData
     };
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
         // User switched tabs or minimized window
         console.log("Page hidden, starting abandoned cart timer");
-        resetTimeout();
+        resetTimeout(orderData); // Pass orderData
       } else {
         // User returned to tab
         console.log("Page visible, resetting abandoned cart timer");
@@ -150,7 +144,7 @@ export const useAbandonedCartTracking = (
 
     const handleBeforeUnload = () => {
       // User is leaving the page
-      resetTimeout();
+      resetTimeout(orderData); // Pass orderData
     };
 
     // Activity events
@@ -173,7 +167,7 @@ export const useAbandonedCartTracking = (
     window.addEventListener("beforeunload", handleBeforeUnload);
 
     // Initial timeout setup
-    resetTimeout();
+    resetTimeout(orderData); // Pass orderData
 
     // Cleanup
     return () => {
@@ -187,12 +181,7 @@ export const useAbandonedCartTracking = (
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [config.enabled, resetTimeout]);
-
-  // Reset timeout when order data changes (user is actively filling form)
-  useEffect(() => {
-    resetTimeout();
-  }, [orderData, resetTimeout]);
+  }, [config.enabled, resetTimeout, orderData]); // Add orderData to dependencies for handleActivity, etc.
 
   return {
     markAsActive,

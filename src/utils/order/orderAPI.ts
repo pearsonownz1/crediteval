@@ -99,3 +99,17 @@ export const sendReceiptEmail = async (orderId: string) => {
     console.error(`Error calling send-order-receipt function:`, error);
   }
 };
+
+export const getOrder = async (orderId: string) => {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("id", orderId)
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};

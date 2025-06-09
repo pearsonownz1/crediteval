@@ -44,14 +44,45 @@ function createResumeUrl(orderData: any): string {
       params.append("company", orderData.customerInfo.company);
   }
 
+  // Add order ID
+  if (orderData.orderId) {
+    params.append("orderId", orderData.orderId);
+  }
+
   // Add service selection
   if (orderData.services) {
-    if (orderData.services.selectedService)
-      params.append("service", orderData.services.selectedService);
+    if (orderData.services.type)
+      // Use 'type' instead of 'selectedService'
+      params.append("type", orderData.services.type);
     if (orderData.services.urgency)
       params.append("urgency", orderData.services.urgency);
-    if (orderData.services.deliveryMethod)
-      params.append("delivery", orderData.services.deliveryMethod);
+    if (orderData.services.deliveryType)
+      // Use 'deliveryType'
+      params.append("deliveryType", orderData.services.deliveryType);
+    if (orderData.services.pageCount)
+      params.append("pageCount", orderData.services.pageCount.toString());
+    if (orderData.services.evaluationType)
+      params.append("evaluationType", orderData.services.evaluationType);
+    if (orderData.services.languageFrom)
+      params.append("languageFrom", orderData.services.languageFrom);
+    if (orderData.services.languageTo)
+      params.append("languageTo", orderData.services.languageTo);
+
+    // Add shipping info
+    if (orderData.services.shippingInfo) {
+      if (orderData.services.shippingInfo.country)
+        params.append("country", orderData.services.shippingInfo.country);
+      if (orderData.services.shippingInfo.address)
+        params.append("address", orderData.services.shippingInfo.address);
+      if (orderData.services.shippingInfo.apartment)
+        params.append("apartment", orderData.services.shippingInfo.apartment);
+      if (orderData.services.shippingInfo.city)
+        params.append("city", orderData.services.shippingInfo.city);
+      if (orderData.services.shippingInfo.state)
+        params.append("state", orderData.services.shippingInfo.state);
+      if (orderData.services.shippingInfo.zip)
+        params.append("zip", orderData.services.shippingInfo.zip);
+    }
   }
 
   // Add current step
@@ -91,12 +122,20 @@ function generateEmailContent(orderData: any, resumeUrl: string) {
 
   if (orderData.services) {
     progressSummary += "🔧 Service Details:\n";
-    if (orderData.services.selectedService)
-      progressSummary += `• Service: ${orderData.services.selectedService}\n`;
+    if (orderData.services.type)
+      progressSummary += `• Service Type: ${orderData.services.type}\n`;
+    if (orderData.services.pageCount)
+      progressSummary += `• Page Count: ${orderData.services.pageCount}\n`;
+    if (orderData.services.evaluationType)
+      progressSummary += `• Evaluation Type: ${orderData.services.evaluationType}\n`;
+    if (orderData.services.languageFrom && orderData.services.languageTo)
+      progressSummary += `• Languages: ${orderData.services.languageFrom} to ${orderData.services.languageTo}\n`;
     if (orderData.services.urgency)
       progressSummary += `• Urgency: ${orderData.services.urgency}\n`;
-    if (orderData.services.deliveryMethod)
-      progressSummary += `• Delivery: ${orderData.services.deliveryMethod}\n`;
+    if (orderData.services.deliveryType)
+      progressSummary += `• Delivery: ${orderData.services.deliveryType}\n`;
+    if (orderData.services.shippingInfo?.country)
+      progressSummary += `• Shipping Address: ${orderData.services.shippingInfo.address}, ${orderData.services.shippingInfo.city}, ${orderData.services.shippingInfo.state}, ${orderData.services.shippingInfo.zip}, ${orderData.services.shippingInfo.country}\n`;
     progressSummary += "\n";
   }
 

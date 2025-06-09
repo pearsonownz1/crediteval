@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Card,
@@ -31,7 +31,7 @@ import { ReviewStep } from "./steps/ReviewStep";
 import { PaymentStep } from "./steps/PaymentStep";
 
 // Utils and Constants
-import { createOrder } from "../../utils/order/orderAPI";
+import { createOrder, getOrder } from "../../utils/order/orderAPI";
 import {
   trackCheckoutStarted,
   trackServiceSelected,
@@ -50,7 +50,12 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { orderId, setOrderId } = useOrderContext();
-  const { orderData, updateOrderData, updateDocuments } = useOrderData();
+  const { orderData, setOrderData, updateOrderData, updateDocuments } =
+    useOrderData();
+  const orderDataRef = useRef(orderData); // Create a ref for orderData
+  useEffect(() => {
+    orderDataRef.current = orderData; // Keep the ref updated
+  }, [orderData]);
   const { paymentProcessing, error, setError, processPayment, isStripeReady } =
     usePaymentProcessing();
   const { validateCustomerInfo } = useOrderValidation();
@@ -61,6 +66,7 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
       customerInfo: orderData.customerInfo,
       services: orderData.services,
       currentStep,
+      orderId: orderId, // Pass orderId here
     },
     {
       delay: 10000, // 10 seconds for testing purposes
@@ -71,112 +77,240 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
   // Check for pre-filled data from URL parameters (for resume functionality)
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
+    const orderIdParam = urlParams.get("orderId");
 
-    // Pre-fill customer info from URL params
-    const firstName = urlParams.get("firstName");
-    const lastName = urlParams.get("lastName");
-    const email = urlParams.get("email");
-    const phone = urlParams.get("phone");
-    const company = urlParams.get("company");
+    const loadOrderData = async () => {
+      console.log("OrderWizard: useEffect - Loading order data...");
+      if (orderIdParam) {
+        console.log(
+          `OrderWizard: useEffect - orderIdParam found: ${orderIdParam}`
+        );
+        try {
+          const fetchedOrder = await getOrder(orderIdParam);
+          if (fetchedOrder) {
+            console.log(
+              "OrderWizard: useEffect - Order fetched successfully:",
+              fetchedOrder
+            );
+            // Map fetched data to OrderData structure
+            const resumedOrderData = {
+              customerInfo: {
+                email: fetchedOrder.email || "",
+                firstName: fetchedOrder.first_name || "",
+                lastName: fetchedOrder.last_name || "",
+                phone: fetchedOrder.phone || "",
+                company: fetchedOrder.company || "",
+              },
+              documents: fetchedOrder.documents || [],
+              services: {
+                type: fetchedOrder.services?.type || undefined,
+                pageCount: fetchedOrder.services?.pageCount || 1,
+                urgency: fetchedOrder.services?.urgency || "standard",
+                deliveryType: fetchedOrder.services?.deliveryType || "email",
+                shippingInfo: {
+                  country: fetchedOrder.services?.shippingInfo?.country || "",
+                  address: fetchedOrder.services?.shippingInfo?.address || "",
+                  apartment:
+                    fetchedOrder.services?.shippingInfo?.apartment || "",
+                  city: fetchedOrder.services?.shippingInfo?.city || "",
+                  state: fetchedOrder.services?.shippingInfo?.state || "",
+                  zip: fetchedOrder.services?.shippingInfo?.zip || "",
+                },
+              },
+              payment: {
+                method: fetchedOrder.payment?.method || "credit-card",
+              },
+            };
+            setOrderData(resumedOrderData); // Use setOrderData from useOrderData hook
+            setOrderId(orderIdParam); // Set orderId in context
+            console.log(
+              "OrderWizard: useEffect - orderData and orderId updated."
+            );
 
-    if (firstName || lastName || email || phone || company) {
-      const prefilledCustomerInfo = {
-        ...orderData.customerInfo,
-        ...(firstName && { firstName }),
-        ...(lastName && { lastName }),
-        ...(email && { email }),
-        ...(phone && { phone }),
-        ...(company && { company }),
-      };
-      updateOrderData("customerInfo", prefilledCustomerInfo);
-    }
+            // Set initial step from URL params or fetched order status
+            const stepParam = urlParams.get("step");
+            if (stepParam) {
+              const step = parseInt(stepParam, 10);
+              if (!isNaN(step) && step >= 0 && step < TOTAL_STEPS) {
+                setCurrentStep(step);
+                console.log(
+                  `OrderWizard: useEffect - Setting currentStep from URL param: ${step}`
+                );
+              }
+            } else if (fetchedOrder.status === "pending_payment") {
+              setCurrentStep(TOTAL_STEPS - 1);
+              console.log(
+                `OrderWizard: useEffect - Setting currentStep to payment step (${
+                  TOTAL_STEPS - 1
+                }) due to status.`
+              );
+            } else if (fetchedOrder.status === "in_progress") {
+              setCurrentStep(1); // Example: start from service selection if in progress
+              console.log(
+                "OrderWizard: useEffect - Setting currentStep to 1 (Service Selection) due to status."
+              );
+            }
+          } else {
+            console.log(
+              "OrderWizard: useEffect - No order fetched for the given orderIdParam."
+            );
+          }
+        } catch (err) {
+          console.error("OrderWizard: Error loading order data:", err);
+          // Optionally, redirect to a new order page or show an error message
+        }
+      } else {
+        console.log(
+          "OrderWizard: useEffect - No orderIdParam found in URL. Proceeding with new order pre-fill logic."
+        );
+        // If no orderId in URL, proceed with existing pre-fill logic for new orders
+        const firstName = urlParams.get("firstName");
+        const lastName = urlParams.get("lastName");
+        const email = urlParams.get("email");
+        const phone = urlParams.get("phone");
+        const company = urlParams.get("company");
 
-    // Pre-fill service info from URL params
-    const service = urlParams.get("service");
-    const urgency = urlParams.get("urgency");
-    const delivery = urlParams.get("delivery");
+        if (firstName || lastName || email || phone || company) {
+          const prefilledCustomerInfo = {
+            ...orderDataRef.current.customerInfo, // Use ref here
+            ...(firstName && { firstName }),
+            ...(lastName && { lastName }),
+            ...(email && { email }),
+            ...(phone && { phone }),
+            ...(company && { company }),
+          };
+          updateOrderData("customerInfo", prefilledCustomerInfo);
+          console.log(
+            "OrderWizard: useEffect - Pre-filled customer info from URL."
+          );
+        }
 
-    if (service || urgency || delivery) {
-      const prefilledServices = {
-        ...orderData.services,
-        ...(service && { selectedService: service }),
-        ...(urgency && { urgency }),
-        ...(delivery && { deliveryMethod: delivery }),
-      };
-      updateOrderData("services", prefilledServices);
-    }
+        const service = urlParams.get("service");
+        const urgency = urlParams.get("urgency");
+        const delivery = urlParams.get("delivery");
 
-    // Set initial step from URL params
-    const stepParam = urlParams.get("step");
-    if (stepParam) {
-      const step = parseInt(stepParam, 10);
-      if (!isNaN(step) && step >= 0 && step < TOTAL_STEPS) {
-        setCurrentStep(step);
+        if (service || urgency || delivery) {
+          const prefilledServices = {
+            ...orderDataRef.current.services, // Use ref here
+            ...(service && { selectedService: service }),
+            ...(urgency && { urgency }),
+            ...(delivery && { deliveryMethod: delivery }),
+          };
+          updateOrderData("services", prefilledServices);
+          console.log(
+            "OrderWizard: useEffect - Pre-filled service info from URL."
+          );
+        }
+
+        const stepParam = urlParams.get("step");
+        if (stepParam) {
+          const step = parseInt(stepParam, 10);
+          if (!isNaN(step) && step >= 0 && step < TOTAL_STEPS) {
+            setCurrentStep(step);
+            console.log(
+              `OrderWizard: useEffect - Setting currentStep from URL param (new order): ${step}`
+            );
+          }
+        }
       }
-    }
+    };
 
-    // Mark as active since user has returned/loaded the page
-    markAsActive();
-  }, [markAsActive, updateOrderData]);
+    loadOrderData();
+    markAsActive(orderDataRef.current); // Pass ref.current here
+    console.log("OrderWizard: useEffect - markAsActive called.");
+  }, [markAsActive, setOrderData, setOrderId]); // Removed orderData from dependencies
 
   // Stop tracking when component unmounts or order is completed
   useEffect(() => {
     return () => {
       stopTracking();
+      console.log("OrderWizard: useEffect cleanup - stopTracking called.");
     };
   }, [stopTracking]);
 
   const handleNext = async () => {
+    console.log(
+      `OrderWizard: handleNext called. Current step: ${currentStep}, Order ID: ${orderId}`
+    );
     setError(null);
 
-    // Step 0: Save Customer Info
+    // Step 0: Save Customer Info or proceed if order already exists
     if (currentStep === 0) {
-      const validationError = validateCustomerInfo(orderData.customerInfo);
-      if (validationError) {
-        setError(validationError);
-        return;
-      }
-
-      setIsSubmitting(true);
-      try {
-        const newOrderId = await createOrder(orderData.customerInfo);
-        if (newOrderId) {
-          setOrderId(newOrderId);
-
-          // Track checkout started with GA4
-          console.log(
-            "OrderWizard: orderData before calculatePrice:",
-            orderData
-          );
-          console.log(
-            "OrderWizard: orderData.services before calculatePrice:",
-            orderData.services
-          );
-
-          // Ensure orderData.services is not undefined before passing to calculatePrice
-          const servicesToCalculate =
-            orderData.services || initialOrderData.services;
-          const calculatedPrice = calculatePrice(servicesToCalculate);
-          trackCheckoutStarted(orderData, newOrderId, calculatedPrice);
-
-          setCurrentStep(currentStep + 1);
-
-          // Mark as active since user is progressing through the form
-          markAsActive();
-        } else {
-          throw new Error("Failed to create order or retrieve ID.");
-        }
-      } catch (err: any) {
-        console.error("Error saving customer info:", err);
-        setError(
-          err.message || "Failed to save information. Please try again."
+      if (!orderId) {
+        console.log(
+          "OrderWizard: handleNext - currentStep is 0 and no orderId. Attempting to create new order."
         );
-      } finally {
-        setIsSubmitting(false);
+        // Only create order if it doesn't already exist (i.e., not resumed)
+        const validationError = validateCustomerInfo(orderData.customerInfo);
+        if (validationError) {
+          setError(validationError);
+          console.log(
+            "OrderWizard: handleNext - Validation error:",
+            validationError
+          );
+          return;
+        }
+
+        setIsSubmitting(true);
+        try {
+          const newOrderId = await createOrder(orderData.customerInfo);
+          if (newOrderId) {
+            setOrderId(newOrderId);
+            console.log(
+              "OrderWizard: handleNext - New order created with ID:",
+              newOrderId
+            );
+
+            // Track checkout started with GA4
+            console.log(
+              "OrderWizard: orderData before calculatePrice:",
+              orderData
+            );
+            console.log(
+              "OrderWizard: orderData.services before calculatePrice:",
+              orderData.services
+            );
+
+            // Ensure orderData.services is not undefined before passing to calculatePrice
+            const servicesToCalculate =
+              orderData.services || initialOrderData.services;
+            const calculatedPrice = calculatePrice(servicesToCalculate);
+            trackCheckoutStarted(orderData, newOrderId, calculatedPrice);
+
+            setCurrentStep(currentStep + 1);
+            console.log(
+              `OrderWizard: handleNext - Moving to next step: ${
+                currentStep + 1
+              }`
+            );
+
+            // Mark as active since user is progressing through the form
+            markAsActive(orderData);
+          } else {
+            throw new Error("Failed to create order or retrieve ID.");
+          }
+        } catch (err: any) {
+          console.error("OrderWizard: Error saving customer info:", err);
+          setError(
+            err.message || "Failed to save information. Please try again."
+          );
+        } finally {
+          setIsSubmitting(false);
+        }
+      } else {
+        console.log(
+          "OrderWizard: handleNext - currentStep is 0 and orderId exists. Skipping createOrder, moving to next step."
+        );
+        // If orderId exists, just move to the next step
+        setCurrentStep(currentStep + 1);
+        markAsActive(orderData);
       }
     }
     // Final Step: Payment Processing
     else if (currentStep === TOTAL_STEPS - 1) {
+      console.log(
+        "OrderWizard: handleNext - currentStep is final step. Processing payment."
+      );
       const calculatedPrice = calculatePrice(orderData.services);
       trackAddPaymentInfo(orderData, orderId!, calculatedPrice);
 
@@ -184,24 +318,38 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
       if (success) {
         // Stop abandoned cart tracking on successful completion
         stopTracking();
+        console.log(
+          "OrderWizard: handleNext - Payment successful, tracking stopped."
+        );
       }
       // Error handling is done within processPayment
     }
     // Other Steps: Just move forward
     else if (currentStep < TOTAL_STEPS - 1) {
+      console.log(
+        `OrderWizard: handleNext - Moving to next step: ${currentStep + 1}`
+      );
       setCurrentStep(currentStep + 1);
 
       // Mark as active since user is progressing
-      markAsActive();
+      markAsActive(orderData);
     }
   };
 
   const handleBack = () => {
+    console.log(`OrderWizard: handleBack called. Current step: ${currentStep}`);
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
+      console.log(
+        `OrderWizard: handleBack - Moving to previous step: ${currentStep - 1}`
+      );
 
       // Mark as active since user is interacting
-      markAsActive();
+      markAsActive(orderData);
+    } else {
+      console.log(
+        "OrderWizard: handleBack - Already at first step (0), cannot go back."
+      );
     }
   };
 
@@ -214,7 +362,7 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
             updateData={(data) => {
               updateOrderData("customerInfo", data);
               // Mark as active when user updates data
-              markAsActive();
+              markAsActive(orderData);
             }}
             error={error}
           />
@@ -226,13 +374,13 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
             updateServiceData={(data) => {
               updateOrderData("services", data);
               // Mark as active when user updates data
-              markAsActive();
+              markAsActive(orderData);
             }}
             documents={orderData.documents}
             updateDocuments={(docs) => {
               updateDocuments(docs);
               // Mark as active when user updates data
-              markAsActive();
+              markAsActive(orderData);
             }}
             orderId={orderId}
           />
@@ -244,7 +392,7 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
             updateData={(data) => {
               updateOrderData("services", data);
               // Mark as active when user updates data
-              markAsActive();
+              markAsActive(orderData);
             }}
           />
         );

@@ -15,11 +15,12 @@
     "jsx": "react-jsx",
 
     "strict": false,
+    "types": ["deno"], // Add deno types here
     "paths": {
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "supabase/functions"], // Include supabase functions directory
   "exclude": ["src/tempobook"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
