@@ -39,6 +39,39 @@ export const updateOrderWithServices = async (
   }
 };
 
+export const updateOrderServices = async (
+  orderId: string,
+  services: any // Consider defining a more specific type for services if available
+) => {
+  const functionUrl = `${
+    import.meta.env.VITE_SUPABASE_URL
+  }/functions/v1/update-order-services`;
+
+  const response = await fetch(functionUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({
+      orderId,
+      services,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({
+      error: "Failed to parse error response from function",
+    }));
+    throw new Error(
+      errorBody.error ||
+        `Function invocation failed with status ${response.status}`
+    );
+  }
+
+  return response.json();
+};
+
 export const callPaymentIntent = async (
   orderId: string,
   amount: number,

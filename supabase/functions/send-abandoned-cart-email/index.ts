@@ -67,6 +67,9 @@ function createResumeUrl(orderData: any): string {
       params.append("languageFrom", orderData.services.languageFrom);
     if (orderData.services.languageTo)
       params.append("languageTo", orderData.services.languageTo);
+    // Add visaType if service type is expert
+    if (orderData.services.type === "expert" && orderData.services.visaType)
+      params.append("visaType", orderData.services.visaType);
 
     // Add shipping info
     if (orderData.services.shippingInfo) {

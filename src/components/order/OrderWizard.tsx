@@ -152,8 +152,10 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
             }
           } else {
             console.log(
-              "OrderWizard: useEffect - No order fetched for the given orderIdParam."
+              "OrderWizard: useEffect - No order fetched for the given orderIdParam. Treating as new order."
             );
+            setOrderId(null); // Explicitly clear orderId to force new order creation
+            setOrderData(initialOrderData); // Reset order data to initial state for a new order
           }
         } catch (err) {
           console.error("OrderWizard: Error loading order data:", err);

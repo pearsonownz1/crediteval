@@ -19,21 +19,33 @@ import {
   URGENCY_OPTIONS,
 } from "../../../constants/order/serviceOptions";
 import { trackServiceSelected } from "../../../utils/analytics"; // Import GA4 tracking function
+import { updateOrderServices } from "../../../utils/order/orderAPI"; // Import the new API function
 
 interface ServiceSelectionStepProps {
   data: ServiceInfo;
   updateData: (data: Partial<ServiceInfo>) => void;
+  orderId: string | null; // Add this prop
 }
 
 export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
   data,
   updateData,
+  orderId, // Destructure orderId
 }) => {
   useEffect(() => {
     if (data.type) {
       trackServiceSelected(data.type, data);
     }
   }, [data.type, data]); // Re-run when service type changes
+
+  useEffect(() => {
+    if (orderId && data.type) {
+      // Only update if orderId exists and a service type is selected
+      updateOrderServices(orderId, data)
+        .then(() => console.log("Order services updated in Supabase."))
+        .catch((err) => console.error("Failed to update order services:", err));
+    }
+  }, [orderId, data]); // Depend on orderId and data
 
   return (
     <div className="space-y-6">

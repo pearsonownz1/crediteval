@@ -27,6 +27,7 @@ export const ServiceAndDocumentStep: React.FC<ServiceAndDocumentStepProps> = ({
         <ServiceSelectionStep
           data={serviceData}
           updateData={updateServiceData}
+          orderId={orderId} // Pass orderId here
         />
 
         <hr className="my-6" />

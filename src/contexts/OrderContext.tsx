@@ -10,31 +10,7 @@ const OrderContext = createContext<OrderContextType | undefined>(undefined);
 export const OrderProvider = ({ children }: { children: React.ReactNode }) => {
   // Initialize state from localStorage if available, otherwise null
   // Ensure the state type is explicitly string | null
-  const [orderId, setOrderIdInternal] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem("orderId"); // getItem returns string or null
-    }
-    return null;
-  });
-
-  // Update localStorage whenever orderId changes
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      if (orderId) {
-        localStorage.setItem("orderId", orderId);
-        console.log(`[OrderContext] Set localStorage orderId: ${orderId}`);
-      } else {
-        localStorage.removeItem("orderId");
-        console.log(`[OrderContext] Removed localStorage orderId`);
-      }
-    }
-  }, [orderId]);
-
-  // Wrapper for setOrderId to ensure localStorage is updated
-  const setOrderId = (id: string | null) => {
-    setOrderIdInternal(id);
-  };
-
+  const [orderId, setOrderId] = useState<string | null>(null);
 
   return (
     <OrderContext.Provider value={{ orderId, setOrderId }}>
