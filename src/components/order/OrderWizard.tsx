@@ -107,6 +107,7 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
                 pageCount: fetchedOrder.services?.pageCount || 1,
                 urgency: fetchedOrder.services?.urgency || "standard",
                 deliveryType: fetchedOrder.services?.deliveryType || "email",
+                visaType: fetchedOrder.services?.visaType || undefined, // Add visaType here
                 shippingInfo: {
                   country: fetchedOrder.services?.shippingInfo?.country || "",
                   address: fetchedOrder.services?.shippingInfo?.address || "",

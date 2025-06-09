@@ -1,4 +1,4 @@
-import React, { useEffect } from "react"; // Combined React and useEffect import
+import React, { useEffect } from "react";
 import { Label } from "../../ui/label";
 import {
   Select,
@@ -11,41 +11,32 @@ import { Input } from "../../ui/input";
 import { Textarea } from "../../ui/textarea";
 import { Checkbox } from "../../ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
-import { ServiceInfo } from "../../../types/order/index"; // Corrected import path
+import { ServiceInfo } from "../../../types/order/index";
 import {
   SERVICE_TYPES,
   LANGUAGES,
   VISA_TYPES,
   URGENCY_OPTIONS,
 } from "../../../constants/order/serviceOptions";
-import { trackServiceSelected } from "../../../utils/analytics"; // Import GA4 tracking function
-import { updateOrderServices } from "../../../utils/order/orderAPI"; // Import the new API function
+import { trackServiceSelected } from "../../../utils/analytics";
+import { updateOrderServices } from "../../../utils/order/orderAPI"; // Removed updateOrderUrgency
 
 interface ServiceSelectionStepProps {
   data: ServiceInfo;
   updateData: (data: Partial<ServiceInfo>) => void;
-  orderId: string | null; // Add this prop
+  orderId: string | null;
 }
 
 export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
   data,
   updateData,
-  orderId, // Destructure orderId
+  orderId,
 }) => {
   useEffect(() => {
     if (data.type) {
       trackServiceSelected(data.type, data);
     }
-  }, [data.type, data]); // Re-run when service type changes
-
-  useEffect(() => {
-    if (orderId && data.type) {
-      // Only update if orderId exists and a service type is selected
-      updateOrderServices(orderId, data)
-        .then(() => console.log("Order services updated in Supabase."))
-        .catch((err) => console.error("Failed to update order services:", err));
-    }
-  }, [orderId, data]); // Depend on orderId and data
+  }, [data.type, data]);
 
   return (
     <div className="space-y-6">
@@ -53,7 +44,22 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
         <Label htmlFor="service-type">Service Type</Label>
         <Select
           value={data.type}
-          onValueChange={(value) => updateData({ type: value })}>
+          onValueChange={(value) => {
+            const updatedData = { ...data, type: value };
+            updateData({ type: value });
+            if (orderId) {
+              updateOrderServices(orderId, updatedData)
+                .then(() =>
+                  console.log("Order services updated (Service Type).")
+                )
+                .catch((err) =>
+                  console.error(
+                    "Failed to update order services (Service Type):",
+                    err
+                  )
+                );
+            }
+          }}>
           <SelectTrigger id="service-type">
             <SelectValue placeholder="Select service type" />
           </SelectTrigger>
@@ -215,7 +221,23 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
           <Label htmlFor="visa-type">Visa Type</Label>
           <Select
             value={data.visaType}
-            onValueChange={(value) => updateData({ visaType: value })}>
+            onValueChange={(value) => {
+              const updatedData = { ...data, visaType: value };
+              updateData({ visaType: value });
+              if (orderId && updatedData.type === "expert") {
+                // Only update if service type is expert
+                updateOrderServices(orderId, updatedData)
+                  .then(() =>
+                    console.log("Order services updated (Visa Type).")
+                  )
+                  .catch((err) =>
+                    console.error(
+                      "Failed to update order services (Visa Type):",
+                      err
+                    )
+                  );
+              }
+            }}>
             <SelectTrigger id="visa-type">
               <SelectValue placeholder="Select Visa Type" />
             </SelectTrigger>
@@ -235,9 +257,23 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
         <Label htmlFor="urgency">Processing Time</Label>
         <Select
           value={data.urgency}
-          onValueChange={(value) =>
-            updateData({ urgency: value as ServiceInfo["urgency"] })
-          }>
+          onValueChange={(value) => {
+            const updatedData = {
+              ...data,
+              urgency: value as ServiceInfo["urgency"],
+            }; // Create updatedData
+            updateData({ urgency: value as ServiceInfo["urgency"] });
+            if (orderId) {
+              updateOrderServices(orderId, updatedData) // Call updateOrderServices with updatedData
+                .then(() => console.log("Order urgency updated via services."))
+                .catch((err) =>
+                  console.error(
+                    "Failed to update order urgency via services:",
+                    err
+                  )
+                );
+            }
+          }}>
           <SelectTrigger id="urgency">
             <SelectValue placeholder="Select processing time" />
           </SelectTrigger>
