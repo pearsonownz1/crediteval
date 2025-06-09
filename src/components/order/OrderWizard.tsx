@@ -397,6 +397,7 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
               // Mark as active when user updates data
               markAsActive(orderData);
             }}
+            orderId={orderId} // Pass orderId here
           />
         );
       case 3:
