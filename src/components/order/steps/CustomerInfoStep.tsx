@@ -1,18 +1,21 @@
 import React from "react";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
-import { CustomerInfo } from "../../../types/order/index"; // Corrected import path
+import { CustomerInfo } from "../../../types/order/index";
+import { DocumentState } from "../../../types/order/documents"; // Import DocumentState
 
 interface CustomerInfoStepProps {
   data: CustomerInfo;
   updateData: (data: Partial<CustomerInfo>) => void;
   error: string | null;
+  documents: DocumentState[]; // Add documents prop
 }
 
 export const CustomerInfoStep: React.FC<CustomerInfoStepProps> = ({
   data,
   updateData,
   error,
+  documents, // Destructure documents here
 }) => {
   return (
     <div className="space-y-4">
@@ -68,6 +71,27 @@ export const CustomerInfoStep: React.FC<CustomerInfoStepProps> = ({
       </div>
 
       {error && <p className="text-red-500 text-sm">{error}</p>}
+
+      {documents && documents.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-md font-medium mt-4">Uploaded Documents</h4>
+          <ul className="list-disc pl-5">
+            {documents.map((doc) =>
+              doc.path ? (
+                <li key={doc.id}>
+                  <a
+                    href={doc.path}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline">
+                    {doc.name}
+                  </a>
+                </li>
+              ) : null
+            )}
+          </ul>
+        </div>
+      )}
     </div>
   );
 };

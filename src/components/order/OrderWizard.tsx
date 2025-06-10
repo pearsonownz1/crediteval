@@ -93,7 +93,16 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
                 phone: fetchedOrder.phone || "",
                 company: fetchedOrder.company || "",
               },
-              documents: fetchedOrder.documents || [],
+              documents:
+                fetchedOrder.document_paths?.map((path: string) => ({
+                  id: path,
+                  name: path.split("/").pop() || path,
+                  path,
+                  size: 0, // Dummy value
+                  type: "", // Dummy value
+                  file: new File([], ""), // Dummy value
+                  status: "success", // Assume success for fetched documents
+                })) || [],
               services: {
                 type: fetchedOrder.services?.type || undefined,
                 languageFrom: fetchedOrder.services?.languageFrom || undefined, // Add languageFrom
@@ -381,6 +390,7 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
               markAsActive(orderData);
             }}
             error={error}
+            documents={orderData.documents} // Pass documents here
           />
         );
       case 1:
