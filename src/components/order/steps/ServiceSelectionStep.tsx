@@ -140,14 +140,54 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
                   ? "border-primary ring-1 ring-primary"
                   : ""
               }`}
-              onClick={() => updateData({ evaluationType: "course" })}>
+              onClick={() => {
+                updateData({ evaluationType: "course" });
+                if (orderId) {
+                  const updatedData = { ...data, evaluationType: "course" };
+                  console.log(
+                    "ServiceSelectionStep: Sending updatedData to backend (Evaluation Type - Course):",
+                    updatedData
+                  ); // Debugging
+                  updateOrderServices(orderId, updatedData)
+                    .then(() =>
+                      console.log(
+                        "Order services updated (Evaluation Type - Course)."
+                      )
+                    )
+                    .catch((err) =>
+                      console.error(
+                        "Failed to update order services (Evaluation Type - Course):",
+                        err
+                      )
+                    );
+                }
+              }}>
               <div className="flex items-start space-x-2">
                 <Checkbox
                   id="course-by-course"
                   checked={data.evaluationType === "course"}
-                  onCheckedChange={() =>
-                    updateData({ evaluationType: "course" })
-                  }
+                  onCheckedChange={() => {
+                    updateData({ evaluationType: "course" });
+                    if (orderId) {
+                      const updatedData = { ...data, evaluationType: "course" };
+                      console.log(
+                        "ServiceSelectionStep: Sending updatedData to backend (Evaluation Type - Course - Checkbox):",
+                        updatedData
+                      ); // Debugging
+                      updateOrderServices(orderId, updatedData)
+                        .then(() =>
+                          console.log(
+                            "Order services updated (Evaluation Type - Course - Checkbox)."
+                          )
+                        )
+                        .catch((err) =>
+                          console.error(
+                            "Failed to update order services (Evaluation Type - Course - Checkbox):",
+                            err
+                          )
+                        );
+                    }
+                  }}
                 />
                 <div>
                   <Tooltip>
@@ -179,14 +219,57 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
                   ? "border-primary ring-1 ring-primary"
                   : ""
               }`}
-              onClick={() => updateData({ evaluationType: "document" })}>
+              onClick={() => {
+                updateData({ evaluationType: "document" });
+                if (orderId) {
+                  const updatedData = { ...data, evaluationType: "document" };
+                  console.log(
+                    "ServiceSelectionStep: Sending updatedData to backend (Evaluation Type - Document):",
+                    updatedData
+                  ); // Debugging
+                  updateOrderServices(orderId, updatedData)
+                    .then(() =>
+                      console.log(
+                        "Order services updated (Evaluation Type - Document)."
+                      )
+                    )
+                    .catch((err) =>
+                      console.error(
+                        "Failed to update order services (Evaluation Type - Document):",
+                        err
+                      )
+                    );
+                }
+              }}>
               <div className="flex items-start space-x-2">
                 <Checkbox
                   id="document-by-document"
                   checked={data.evaluationType === "document"}
-                  onCheckedChange={() =>
-                    updateData({ evaluationType: "document" })
-                  }
+                  onCheckedChange={() => {
+                    updateData({ evaluationType: "document" });
+                    if (orderId) {
+                      const updatedData = {
+                        ...data,
+                        evaluationType: "document",
+                      };
+                      console.log(
+                        "ServiceSelectionStep: Sending updatedData to backend (Evaluation Type - Document - Checkbox):",
+                        updatedData
+                      ); // Debugging
+                      updateOrderServices(orderId, updatedData)
+                        .then(() =>
+                          console.log(
+                            "Order services updated (Evaluation Type - Document - Checkbox)."
+                          )
+                        )
+                        .catch((err) =>
+                          console.error(
+                            "Failed to update order services (Evaluation Type - Document - Checkbox):",
+                            err
+                          )
+                        );
+                    }
+                  }}
                 />
                 <div>
                   <Tooltip>
@@ -264,6 +347,10 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
             }; // Create updatedData
             updateData({ urgency: value as ServiceInfo["urgency"] });
             if (orderId) {
+              console.log(
+                "ServiceSelectionStep: Sending updatedData to backend (Urgency):",
+                updatedData
+              ); // Debugging
               updateOrderServices(orderId, updatedData) // Call updateOrderServices with updatedData
                 .then(() => console.log("Order urgency updated via services."))
                 .catch((err) =>

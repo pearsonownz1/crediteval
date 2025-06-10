@@ -40,7 +40,7 @@ import {
 } from "../../utils/analytics";
 import { calculatePrice } from "../../utils/order/priceCalculation";
 import { TOTAL_STEPS } from "../../constants/order/steps";
-import { OrderWizardProps } from "../../types/order/index";
+import { OrderWizardProps, ServiceInfo } from "../../types/order/index";
 
 const OrderWizard: React.FC<OrderWizardProps> = ({
   onComplete = () => {},
@@ -80,18 +80,10 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
     const orderIdParam = urlParams.get("orderId");
 
     const loadOrderData = async () => {
-      console.log("OrderWizard: useEffect - Loading order data...");
       if (orderIdParam) {
-        console.log(
-          `OrderWizard: useEffect - orderIdParam found: ${orderIdParam}`
-        );
         try {
           const fetchedOrder = await getOrder(orderIdParam);
           if (fetchedOrder) {
-            console.log(
-              "OrderWizard: useEffect - Order fetched successfully:",
-              fetchedOrder
-            );
             // Map fetched data to OrderData structure
             const resumedOrderData = {
               customerInfo: {
@@ -107,7 +99,9 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
                 pageCount: fetchedOrder.services?.pageCount || 1,
                 urgency: fetchedOrder.services?.urgency || "standard",
                 deliveryType: fetchedOrder.services?.deliveryType || "email",
-                visaType: fetchedOrder.services?.visaType || undefined, // Add visaType here
+                evaluationType:
+                  fetchedOrder.services?.evaluationType || undefined, // Re-add evaluationType here
+                visaType: fetchedOrder.services?.visaType || undefined,
                 shippingInfo: {
                   country: fetchedOrder.services?.shippingInfo?.country || "",
                   address: fetchedOrder.services?.shippingInfo?.address || "",
@@ -124,9 +118,6 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
             };
             setOrderData(resumedOrderData); // Use setOrderData from useOrderData hook
             setOrderId(orderIdParam); // Set orderId in context
-            console.log(
-              "OrderWizard: useEffect - orderData and orderId updated."
-            );
 
             // Set initial step from URL params or fetched order status
             const stepParam = urlParams.get("step");
@@ -134,27 +125,13 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
               const step = parseInt(stepParam, 10);
               if (!isNaN(step) && step >= 0 && step < TOTAL_STEPS) {
                 setCurrentStep(step);
-                console.log(
-                  `OrderWizard: useEffect - Setting currentStep from URL param: ${step}`
-                );
               }
             } else if (fetchedOrder.status === "pending_payment") {
               setCurrentStep(TOTAL_STEPS - 1);
-              console.log(
-                `OrderWizard: useEffect - Setting currentStep to payment step (${
-                  TOTAL_STEPS - 1
-                }) due to status.`
-              );
             } else if (fetchedOrder.status === "in_progress") {
               setCurrentStep(1); // Example: start from service selection if in progress
-              console.log(
-                "OrderWizard: useEffect - Setting currentStep to 1 (Service Selection) due to status."
-              );
             }
           } else {
-            console.log(
-              "OrderWizard: useEffect - No order fetched for the given orderIdParam. Treating as new order."
-            );
             setOrderId(null); // Explicitly clear orderId to force new order creation
             setOrderData(initialOrderData); // Reset order data to initial state for a new order
           }
@@ -163,9 +140,6 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
           // Optionally, redirect to a new order page or show an error message
         }
       } else {
-        console.log(
-          "OrderWizard: useEffect - No orderIdParam found in URL. Proceeding with new order pre-fill logic."
-        );
         // If no orderId in URL, proceed with existing pre-fill logic for new orders
         const firstName = urlParams.get("firstName");
         const lastName = urlParams.get("lastName");
@@ -183,26 +157,42 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
             ...(company && { company }),
           };
           updateOrderData("customerInfo", prefilledCustomerInfo);
-          console.log(
-            "OrderWizard: useEffect - Pre-filled customer info from URL."
-          );
         }
 
-        const service = urlParams.get("service");
-        const urgency = urlParams.get("urgency");
-        const delivery = urlParams.get("delivery");
+        const serviceParam = urlParams.get("service");
+        const urgencyParam = urlParams.get("urgency");
+        const deliveryParam = urlParams.get("delivery");
+        const evaluationTypeParam = urlParams.get("evaluationType");
 
-        if (service || urgency || delivery) {
-          const prefilledServices = {
-            ...orderDataRef.current.services, // Use ref here
-            ...(service && { selectedService: service }),
-            ...(urgency && { urgency }),
-            ...(delivery && { deliveryMethod: delivery }),
+        if (
+          serviceParam ||
+          urgencyParam ||
+          deliveryParam ||
+          evaluationTypeParam
+        ) {
+          const prefilledServices: Partial<ServiceInfo> = {
+            ...orderDataRef.current.services,
           };
+
+          if (serviceParam) {
+            prefilledServices.type = serviceParam;
+          } else if (evaluationTypeParam) {
+            // If evaluationType is present but service type isn't explicitly set, assume evaluation
+            prefilledServices.type = "evaluation";
+          }
+
+          if (urgencyParam) {
+            prefilledServices.urgency = urgencyParam as ServiceInfo["urgency"];
+          }
+          if (deliveryParam) {
+            prefilledServices.deliveryType =
+              deliveryParam as ServiceInfo["deliveryType"];
+          }
+          if (evaluationTypeParam) {
+            prefilledServices.evaluationType = evaluationTypeParam;
+          }
+
           updateOrderData("services", prefilledServices);
-          console.log(
-            "OrderWizard: useEffect - Pre-filled service info from URL."
-          );
         }
 
         const stepParam = urlParams.get("step");
@@ -210,9 +200,6 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
           const step = parseInt(stepParam, 10);
           if (!isNaN(step) && step >= 0 && step < TOTAL_STEPS) {
             setCurrentStep(step);
-            console.log(
-              `OrderWizard: useEffect - Setting currentStep from URL param (new order): ${step}`
-            );
           }
         }
       }
@@ -220,7 +207,6 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
 
     loadOrderData();
     markAsActive(orderDataRef.current); // Pass ref.current here
-    console.log("OrderWizard: useEffect - markAsActive called.");
   }, [markAsActive, setOrderData, setOrderId]); // Removed orderData from dependencies
 
   // Stop tracking when component unmounts or order is completed
