@@ -428,11 +428,45 @@ serve(async (req) => {
     const customerEmail = orderData.customerInfo.email;
     console.log(`Processing abandoned cart email for: ${customerEmail}`);
 
-    // Check if we've already sent an abandoned cart email for this session recently
+    // 1. Check if the order has already been paid or is pending payment
+    if (orderData.orderId) {
+      const { data: order, error: orderFetchError } = await supabaseAdmin
+        .from("orders")
+        .select("status")
+        .eq("id", orderData.orderId)
+        .single();
+
+      if (orderFetchError) {
+        console.error(
+          `Error fetching order status for ${orderData.orderId}:`,
+          orderFetchError
+        );
+        // Continue anyway, don't block email sending due to fetch error
+      } else if (
+        order &&
+        (order.status === "paid" || order.status === "pending_payment")
+      ) {
+        console.log(
+          `Order ${orderData.orderId} is already paid or pending payment. Skipping abandoned cart email.`
+        );
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: "Order already paid or pending payment, skipping email.",
+          }),
+          {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200,
+          }
+        );
+      }
+    }
+
+    // 2. Check if we've already sent an abandoned cart email for this session recently
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     const { data: recentEmails, error: checkError } = await supabaseAdmin
-      .from("abandoned_cart_emails") // You'll need to create this table
+      .from("abandoned_cart_emails")
       .select("id")
       .eq("email", customerEmail)
       .eq("session_id", sessionId || "unknown")
