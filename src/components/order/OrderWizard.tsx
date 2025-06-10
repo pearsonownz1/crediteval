@@ -104,6 +104,8 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
                 evaluationType:
                   fetchedOrder.services?.evaluationType || undefined,
                 visaType: fetchedOrder.services?.visaType || undefined,
+                specialInstructions:
+                  fetchedOrder.services?.specialInstructions || undefined, // Add this line
                 shippingInfo: {
                   country: fetchedOrder.services?.shippingInfo?.country || "",
                   address: fetchedOrder.services?.shippingInfo?.address || "",
@@ -168,6 +170,7 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
         const languageFromParam = urlParams.get("languageFrom");
         const languageToParam = urlParams.get("languageTo");
         const pageCountParam = urlParams.get("pageCount");
+        const specialInstructionsParam = urlParams.get("specialInstructions"); // Add this line
 
         if (
           serviceParam ||
@@ -176,7 +179,8 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
           evaluationTypeParam ||
           languageFromParam ||
           languageToParam ||
-          pageCountParam
+          pageCountParam ||
+          specialInstructionsParam // Add this line
         ) {
           const prefilledServices: Partial<ServiceInfo> = {
             ...orderDataRef.current.services,
@@ -210,6 +214,9 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
           }
           if (pageCountParam) {
             prefilledServices.pageCount = parseInt(pageCountParam, 10);
+          }
+          if (specialInstructionsParam) {
+            prefilledServices.specialInstructions = specialInstructionsParam; // Add this line
           }
 
           updateOrderData("services", prefilledServices);

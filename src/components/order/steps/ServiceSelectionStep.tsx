@@ -382,7 +382,31 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
           id="special-instructions"
           placeholder="Any specific requirements or notes for your order"
           value={data.specialInstructions || ""}
-          onChange={(e) => updateData({ specialInstructions: e.target.value })}
+          onChange={(e) => {
+            const updatedData = {
+              ...data,
+              specialInstructions: e.target.value,
+            };
+            updateData({ specialInstructions: e.target.value });
+            if (orderId) {
+              console.log(
+                "ServiceSelectionStep: Sending updatedData to backend (Special Instructions):",
+                updatedData
+              );
+              updateOrderServices(orderId, updatedData)
+                .then(() =>
+                  console.log(
+                    "Order special instructions updated via services."
+                  )
+                )
+                .catch((err) =>
+                  console.error(
+                    "Failed to update order special instructions via services:",
+                    err
+                  )
+                );
+            }
+          }}
         />
       </div>
     </div>
