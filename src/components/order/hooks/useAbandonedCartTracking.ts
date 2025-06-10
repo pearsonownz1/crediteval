@@ -26,7 +26,7 @@ interface OrderData {
 
 export const useAbandonedCartTracking = (
   orderData: OrderData,
-  config: AbandonedCartConfig = { delay: 3600000, enabled: true } // 1 hour (3,600,000 ms)
+  config: AbandonedCartConfig = { delay: 18000000, enabled: true } // 1 hour (3,600,000 ms)
 ) => {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const sessionIdRef = useRef<string>(uuidv4());
