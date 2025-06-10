@@ -197,7 +197,16 @@ This is an automated message. If you completed your order or no longer wish to r
     .header { background: #0066cc; color: white; padding: 20px; text-align: center; margin-bottom: 20px; }
     .content { padding: 20px; }
     .progress-box { background: #f8f9fa; border-left: 4px solid #0066cc; padding: 15px; margin: 20px 0; }
-    .cta-button { display: inline-block; background: #004080; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; } /* Changed to a darker blue for better contrast */
+    .cta-button {
+      display: inline-block;
+      background-color: #2176FF; /* Matches --primary */
+      color: #FFFFFF; /* Explicitly white for readability */
+      padding: 12px 30px;
+      text-decoration: none;
+      border-radius: 6px; /* Matches rounded-md (0.5rem - 2px) */
+      box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); /* Mimics shadow */
+      margin: 20px 0;
+    }
     .footer { font-size: 12px; color: #666; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
   </style>
 </head>
