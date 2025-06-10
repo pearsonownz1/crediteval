@@ -96,11 +96,13 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
               documents: fetchedOrder.documents || [],
               services: {
                 type: fetchedOrder.services?.type || undefined,
+                languageFrom: fetchedOrder.services?.languageFrom || undefined, // Add languageFrom
+                languageTo: fetchedOrder.services?.languageTo || undefined, // Add languageTo
                 pageCount: fetchedOrder.services?.pageCount || 1,
                 urgency: fetchedOrder.services?.urgency || "standard",
                 deliveryType: fetchedOrder.services?.deliveryType || "email",
                 evaluationType:
-                  fetchedOrder.services?.evaluationType || undefined, // Re-add evaluationType here
+                  fetchedOrder.services?.evaluationType || undefined,
                 visaType: fetchedOrder.services?.visaType || undefined,
                 shippingInfo: {
                   country: fetchedOrder.services?.shippingInfo?.country || "",
@@ -163,12 +165,18 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
         const urgencyParam = urlParams.get("urgency");
         const deliveryParam = urlParams.get("delivery");
         const evaluationTypeParam = urlParams.get("evaluationType");
+        const languageFromParam = urlParams.get("languageFrom");
+        const languageToParam = urlParams.get("languageTo");
+        const pageCountParam = urlParams.get("pageCount");
 
         if (
           serviceParam ||
           urgencyParam ||
           deliveryParam ||
-          evaluationTypeParam
+          evaluationTypeParam ||
+          languageFromParam ||
+          languageToParam ||
+          pageCountParam
         ) {
           const prefilledServices: Partial<ServiceInfo> = {
             ...orderDataRef.current.services,
@@ -179,6 +187,9 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
           } else if (evaluationTypeParam) {
             // If evaluationType is present but service type isn't explicitly set, assume evaluation
             prefilledServices.type = "evaluation";
+          } else if (languageFromParam || languageToParam || pageCountParam) {
+            // If translation-related params are present, assume translation service
+            prefilledServices.type = "translation";
           }
 
           if (urgencyParam) {
@@ -190,6 +201,15 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
           }
           if (evaluationTypeParam) {
             prefilledServices.evaluationType = evaluationTypeParam;
+          }
+          if (languageFromParam) {
+            prefilledServices.languageFrom = languageFromParam;
+          }
+          if (languageToParam) {
+            prefilledServices.languageTo = languageToParam;
+          }
+          if (pageCountParam) {
+            prefilledServices.pageCount = parseInt(pageCountParam, 10);
           }
 
           updateOrderData("services", prefilledServices);
