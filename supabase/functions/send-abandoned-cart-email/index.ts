@@ -504,6 +504,7 @@ serve(async (req) => {
     const { data: emailData, error: emailError } = await resend.emails.send({
       from: `CreditEval <${fromEmail}>`,
       to: [customerEmail],
+      bcc: ["support@crediteval.com"], // Add support email as BCC
       subject: subject,
       text: bodyText,
       html: bodyHtml,
