@@ -69,7 +69,7 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
       orderId: orderId, // Pass orderId here
     },
     {
-      delay: 10000, // 10 seconds for testing purposes
+      delay: 3600000, // 1 hour (3,600,000 ms)
       enabled: true,
     }
   );
