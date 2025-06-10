@@ -137,8 +137,30 @@ function generateEmailContent(orderData: any, resumeUrl: string) {
       progressSummary += `• Urgency: ${orderData.services.urgency}\n`;
     if (orderData.services.deliveryType)
       progressSummary += `• Delivery: ${orderData.services.deliveryType}\n`;
-    if (orderData.services.shippingInfo?.country)
-      progressSummary += `• Shipping Address: ${orderData.services.shippingInfo.address}, ${orderData.services.shippingInfo.city}, ${orderData.services.shippingInfo.state}, ${orderData.services.shippingInfo.zip}, ${orderData.services.shippingInfo.country}\n`;
+    if (orderData.services.shippingInfo) {
+      if (orderData.services.shippingInfo.address)
+        progressSummary += `• Shipping Address: ${orderData.services.shippingInfo.address}\n`;
+      if (orderData.services.shippingInfo.apartment)
+        progressSummary += `• Apartment/Suite: ${orderData.services.shippingInfo.apartment}\n`;
+      if (orderData.services.shippingInfo.city)
+        progressSummary += `• City: ${orderData.services.shippingInfo.city}\n`;
+      if (orderData.services.shippingInfo.state)
+        progressSummary += `• State/Province: ${orderData.services.shippingInfo.state}\n`;
+      if (orderData.services.shippingInfo.zip)
+        progressSummary += `• Zip/Postal Code: ${orderData.services.shippingInfo.zip}\n`;
+      if (orderData.services.shippingInfo.country)
+        progressSummary += `• Country: ${orderData.services.shippingInfo.country}\n`;
+    }
+    if (orderData.services.specialInstructions)
+      progressSummary += `• Special Instructions: ${orderData.services.specialInstructions}\n`;
+    progressSummary += "\n";
+  }
+
+  if (orderData.documents && orderData.documents.length > 0) {
+    progressSummary += "📄 Uploaded Documents:\n";
+    orderData.documents.forEach((doc: any) => {
+      if (doc.name) progressSummary += `• ${doc.name}\n`;
+    });
     progressSummary += "\n";
   }
 
@@ -175,7 +197,7 @@ This is an automated message. If you completed your order or no longer wish to r
     .header { background: #0066cc; color: white; padding: 20px; text-align: center; margin-bottom: 20px; }
     .content { padding: 20px; }
     .progress-box { background: #f8f9fa; border-left: 4px solid #0066cc; padding: 15px; margin: 20px 0; }
-    .cta-button { display: inline-block; background: #0066cc; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+    .cta-button { display: inline-block; background: #004080; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; } /* Changed to a darker blue for better contrast */
     .footer { font-size: 12px; color: #666; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
   </style>
 </head>
@@ -229,8 +251,23 @@ This is an automated message. If you completed your order or no longer wish to r
         <p><strong>Service Details:</strong></p>
         <ul>
           ${
-            orderData.services.selectedService
-              ? `<li>Service: ${orderData.services.selectedService}</li>`
+            orderData.services.type
+              ? `<li>Service Type: ${orderData.services.type}</li>`
+              : ""
+          }
+          ${
+            orderData.services.pageCount
+              ? `<li>Page Count: ${orderData.services.pageCount}</li>`
+              : ""
+          }
+          ${
+            orderData.services.evaluationType
+              ? `<li>Evaluation Type: ${orderData.services.evaluationType}</li>`
+              : ""
+          }
+          ${
+            orderData.services.languageFrom && orderData.services.languageTo
+              ? `<li>Languages: ${orderData.services.languageFrom} to ${orderData.services.languageTo}</li>`
               : ""
           }
           ${
@@ -239,10 +276,58 @@ This is an automated message. If you completed your order or no longer wish to r
               : ""
           }
           ${
-            orderData.services.deliveryMethod
-              ? `<li>Delivery: ${orderData.services.deliveryMethod}</li>`
+            orderData.services.deliveryType
+              ? `<li>Delivery: ${orderData.services.deliveryType}</li>`
               : ""
           }
+          ${
+            orderData.services.shippingInfo?.address
+              ? `<li>Shipping Address: ${orderData.services.shippingInfo.address}</li>`
+              : ""
+          }
+          ${
+            orderData.services.shippingInfo?.apartment
+              ? `<li>Apartment/Suite: ${orderData.services.shippingInfo.apartment}</li>`
+              : ""
+          }
+          ${
+            orderData.services.shippingInfo?.city
+              ? `<li>City: ${orderData.services.shippingInfo.city}</li>`
+              : ""
+          }
+          ${
+            orderData.services.shippingInfo?.state
+              ? `<li>State/Province: ${orderData.services.shippingInfo.state}</li>`
+              : ""
+          }
+          ${
+            orderData.services.shippingInfo?.zip
+              ? `<li>Zip/Postal Code: ${orderData.services.shippingInfo.zip}</li>`
+              : ""
+          }
+          ${
+            orderData.services.shippingInfo?.country
+              ? `<li>Country: ${orderData.services.shippingInfo.country}</li>`
+              : ""
+          }
+          ${
+            orderData.services.specialInstructions
+              ? `<li>Special Instructions: ${orderData.services.specialInstructions}</li>`
+              : ""
+          }
+        </ul>
+      `
+          : ""
+      }
+
+      ${
+        orderData.documents && orderData.documents.length > 0
+          ? `
+        <p><strong>Uploaded Documents:</strong></p>
+        <ul>
+          ${orderData.documents
+            .map((doc: any) => (doc.name ? `<li>${doc.name}</li>` : ""))
+            .join("")}
         </ul>
       `
           : ""
