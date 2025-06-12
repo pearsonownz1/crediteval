@@ -3,7 +3,7 @@ import Stripe from "https://esm.sh/stripe@11.16.0?target=deno&deno-std=0.132.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, getAllowedCorsHeaders } from "../_shared/cors.ts";
 
-console.log("Function starting (Payment Intent version)...");
+console.log("Function starting (Quote Payment Intent version)...");
 
 // IMPORTANT: Set these in your Supabase project's Function Environment Variables settings.
 const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
@@ -51,17 +51,15 @@ serve(async (req) => {
     const requestBody = await req.json();
     console.log("Received request body:", JSON.stringify(requestBody, null, 2));
 
-    // Destructure expected parameters for Payment Intent
+    // Destructure expected parameters for Quote Payment Intent
     const {
       amount,
-      orderId,
-      quoteId,
+      quoteId, // Only expect quoteId for this function
       services, // Keep services here for logging, but make it optional in update
       currency = "usd",
-    } = requestBody; // Expect orderId or quoteId
+    } = requestBody;
 
     console.log(`Extracted amount: ${amount} (type: ${typeof amount})`);
-    console.log(`Extracted orderId: ${orderId} (type: ${typeof orderId})`); // Log orderId
     console.log(`Extracted quoteId: ${quoteId} (type: ${typeof quoteId})`); // Log quoteId
     console.log(`Extracted services: `, services); // Log services to see if it's undefined
     console.log(`Extracted currency: ${currency}`);
@@ -74,63 +72,72 @@ serve(async (req) => {
         "Invalid or missing amount provided (must be at least 50 cents)."
       );
     }
-    if (!orderId && !quoteId) {
-      // Validate that at least one ID is present
-      console.error(
-        "Order ID or Quote ID validation failed: Neither provided."
-      );
-      throw new Error("Missing orderId or quoteId.");
-    }
-    if (orderId && typeof orderId !== "string") {
-      console.error("Order ID validation failed: Invalid type.", orderId);
-      throw new Error("Invalid orderId.");
-    }
-    if (quoteId && typeof quoteId !== "string") {
+    if (!quoteId || typeof quoteId !== "string") {
       console.error("Quote ID validation failed: Invalid type.", quoteId);
-      throw new Error("Invalid quoteId.");
+      throw new Error("Invalid or missing quoteId.");
     }
     // --- End Input Validation ---
 
-    const targetId = quoteId || orderId; // Prioritize quoteId if both are present
-    const targetType = quoteId ? "quote" : "order";
+    const targetId = quoteId; // For quotes, targetId is always quoteId
+    const targetType = "quote";
 
     console.log(
       `Validation passed. Creating Payment Intent for ${targetType} ${targetId} with amount ${amount}`
     );
 
-    // --- Check if Order/Quote Exists and Get Details (Optional but Recommended) ---
-    // This section is commented out in the original, but if uncommented, it would need
-    // to be updated to check both orders and quotes. For now, leaving as is.
-    // --- End Order/Quote Check ---
+    // --- Check if Quote Exists and Get Details (Optional but Recommended) ---
+    // You might want to fetch the quote from Supabase here to confirm the amount
+    // and ensure the quote exists before creating the Payment Intent.
+    // const { data: quoteData, error: quoteError } = await supabaseAdmin
+    //   .from('quotes')
+    //   .select('price, status') // Select relevant fields
+    //   .eq('id', quoteId)
+    //   .single();
+    //
+    // if (quoteError || !quoteData) {
+    //   console.error(`Quote ${quoteId} not found or error fetching:`, quoteError);
+    //   throw new Error(`Quote ${quoteId} not found.`);
+    // }
+    //
+    // // Optional: Verify amount matches the quote record
+    // if (quoteData.price * 100 !== amount) {
+    //    console.warn(`Amount mismatch for quote ${quoteId}. Request: ${amount}, DB: ${quoteData.price * 100}. Proceeding with requested amount.`);
+    //    // Decide how to handle mismatch - throw error or proceed?
+    // }
+    //
+    // if (quoteData.status === 'Paid') { // Prevent paying for already paid quote
+    //    console.error(`Quote ${quoteId} has already been paid.`);
+    //    throw new Error(`Quote ${quoteId} has already been paid.`);
+    // }
+    // --- End Quote Check ---
 
     // Create a Stripe Payment Intent
-    const paymentIntentParams: Stripe.PaymentIntentCreateParams = {
-      amount: amount, // Amount in cents
-      currency: currency,
-      metadata: {
-        ...(orderId && { order_id: orderId }), // Add order_id if present
-        ...(quoteId && { quote_id: quoteId }), // Add quote_id if present
-        // Add any other relevant metadata you might need
-      },
-      // You might need 'automatic_payment_methods': { enabled: true } depending on your Stripe setup
-      // Or specify payment_method_types: ['card']
-      payment_method_types: ["card"],
-      // Consider adding customer ID if you manage Stripe customers:
-      // customer: stripeCustomerId,
-      // description: `Payment for ${targetType} ID: ${targetId}`, // Optional description
-    };
+    let paymentIntent;
+    try {
+      const paymentIntentParams: Stripe.PaymentIntentCreateParams = {
+        amount: amount, // Amount in cents
+        currency: currency,
+        metadata: {
+          quote_id: quoteId, // Add quote_id to metadata
+          // Add any other relevant metadata you might need
+        },
+        payment_method_types: ["card"],
+      };
 
-    console.log("Creating Payment Intent with params:", paymentIntentParams);
-    const paymentIntent = await stripe.paymentIntents.create(
-      paymentIntentParams
-    );
+      console.log("Creating Payment Intent with params:", paymentIntentParams);
+      paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
 
-    console.log(
-      `Stripe Payment Intent ${paymentIntent.id} created for ${targetType} ${targetId}.`
-    );
+      console.log(
+        `Stripe Payment Intent ${paymentIntent.id} created for ${targetType} ${targetId}.`
+      );
+    } catch (stripeError: any) {
+      console.error(`Stripe Payment Intent creation failed:`, stripeError);
+      throw new Error(
+        `Stripe Payment Intent creation failed: ${stripeError.message}`
+      );
+    }
 
-    // --- Update Order/Quote Status/Payment Intent ID using Service Role (Optional but Recommended) ---
-    // Store the paymentIntent.id in your order/quote table for reconciliation
+    // --- Update Quote Status/Payment Intent ID using Service Role ---
     try {
       console.log(
         `Attempting to update ${targetType} ID: ${targetId} with payment intent ID: ${paymentIntent.id}`
@@ -140,7 +147,6 @@ serve(async (req) => {
         stripe_payment_intent_id: string;
         status: string;
         price?: number;
-        total_amount?: number;
         services?: any; // Make services optional
       } = {
         stripe_payment_intent_id: paymentIntent.id,
@@ -151,22 +157,11 @@ serve(async (req) => {
         updateData.services = services;
       }
 
-      let updateResult;
-      if (quoteId) {
-        updateData.price = amount / 100; // Store amount in dollars for quotes table
-        updateResult = await supabaseAdmin
-          .from("quotes") // Update the 'quotes' table
-          .update(updateData)
-          .eq("id", quoteId);
-      } else if (orderId) {
-        updateData.total_amount = amount; // Ensure total_amount is stored/updated correctly
-        updateResult = await supabaseAdmin
-          .from("orders") // Update the 'orders' table
-          .update(updateData)
-          .eq("id", orderId);
-      }
-
-      const { error: updateError } = updateResult || {};
+      updateData.price = amount / 100; // Store amount in dollars for quotes table
+      const { error: updateError } = await supabaseAdmin
+        .from("quotes") // Always update the 'quotes' table
+        .update(updateData)
+        .eq("id", quoteId);
 
       if (updateError) {
         console.error(
@@ -184,8 +179,9 @@ serve(async (req) => {
         `Database exception updating ${targetType} ${targetId}:`,
         dbError
       );
+      throw new Error(`Database update failed: ${dbError.message}`); // Re-throw to ensure client gets error
     }
-    // --- End Update Order/Quote Status ---
+    // --- End Update Quote Status ---
 
     // Log the client secret before returning
     console.log(
@@ -220,4 +216,4 @@ serve(async (req) => {
   }
 });
 
-console.log("Function handler registered (Payment Intent version).");
+console.log("Function handler registered (Quote Payment Intent version).");
