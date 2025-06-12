@@ -7,10 +7,10 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { QuotesTable } from "./QuotesTable";
-import { QuoteDetails } from "./QuoteDetails";
 import { useQuotes } from "../../../hooks/useQuotes";
 import { useSelection } from "../../../hooks/useSelection";
 import { Quote } from "../../../types/quote";
+import { useNavigate } from "react-router-dom";
 
 export const QuotesView: React.FC = () => {
   const { quotes, loading, error, deleteQuotes } = useQuotes();
@@ -22,12 +22,11 @@ export const QuotesView: React.FC = () => {
     handleSelectRow,
     clearSelection,
   } = useSelection(quotes);
-  const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
-  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+
+  const navigate = useNavigate();
 
   const handleRowClick = (quote: Quote) => {
-    setSelectedQuote(quote);
-    setDetailsDialogOpen(true);
+    navigate(`/admin/quotes/${quote.id}`);
   };
 
   const handleDeleteSelected = async () => {
@@ -73,12 +72,6 @@ export const QuotesView: React.FC = () => {
           </div>
         </CardFooter>
       </Card>
-
-      <QuoteDetails
-        quote={selectedQuote}
-        open={detailsDialogOpen}
-        onOpenChange={setDetailsDialogOpen}
-      />
     </>
   );
 };

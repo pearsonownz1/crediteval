@@ -8,14 +8,10 @@ type ActiveView = "orders" | "quotes" | "clients" | "settings" | "create-quote";
 
 interface DashboardLayoutProps {
   children: ReactNode;
-  activeView: ActiveView;
-  setActiveView: (view: ActiveView) => void;
 }
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   children,
-  activeView,
-  setActiveView,
 }) => {
   const navigate = useNavigate();
 
@@ -30,13 +26,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
   return (
     <div className="flex h-screen bg-gray-100">
-      <Sidebar
-        activeView={activeView}
-        setActiveView={setActiveView}
-        onLogout={handleLogout}
-      />
+      <Sidebar onLogout={handleLogout} />
       <main className="flex-1 overflow-y-auto p-6">
-        <Header activeView={activeView} />
+        <Header />
         {children}
       </main>
     </div>

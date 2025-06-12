@@ -30,6 +30,7 @@ import EmploymentUseCase from "./components/use-cases/EmploymentUseCase";
 import { QuotePaymentPage } from "./components/QuotePaymentPage"; // Import the new payment page
 import { PaymentSuccessPage } from "./components/PaymentSuccessPage"; // Import the payment success page
 import { OrderProvider } from "./contexts/OrderContext"; // Import the OrderProvider
+import { QuoteDetailsPage } from "./pages/QuoteDetailsPage"; // Import QuoteDetailsPage
 import routes from "tempo-routes";
 
 function App() {
@@ -229,6 +230,12 @@ function App() {
             {/* Removed duplicate dashboard route */}
             <Route path="/admin" element={<AdminDashboard />} />{" "}
             {/* Keep /admin as the route */}
+            <Route path="/admin/quotes" element={<AdminDashboard />} />
+            <Route path="/admin/orders" element={<AdminDashboard />} />
+            <Route path="/admin/clients" element={<AdminDashboard />} />
+            <Route path="/admin/settings" element={<AdminDashboard />} />
+            <Route path="/admin/create-quote" element={<AdminDashboard />} />
+            <Route path="/admin/quotes/:id" element={<AdminDashboard />} />
             {/* Add other protected routes here */}
           </Route>
         </Routes>

@@ -1,5 +1,5 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom"; // Import useNavigate and useLocation
 import { Button } from "@/components/ui/button";
 import {
   ClipboardList,
@@ -18,11 +18,12 @@ interface SidebarProps {
   onLogout: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({
-  activeView,
-  setActiveView,
-  onLogout,
-}) => {
+export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const isActive = (path: string) => location.pathname.includes(path);
+
   return (
     <aside className="w-64 bg-gray-800 text-gray-200 flex flex-col flex-shrink-0">
       <div className="p-4 text-center text-xl font-bold border-b border-gray-700">
@@ -30,46 +31,45 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
       <nav className="flex-grow p-4 space-y-2">
         <Link
-          to="#orders"
-          onClick={() => setActiveView("orders")}
+          to="/admin/orders"
           className={`flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700 ${
-            activeView === "orders" ? "bg-gray-900 text-white" : "text-gray-300"
+            isActive("/admin/orders")
+              ? "bg-gray-900 text-white"
+              : "text-gray-300"
           }`}>
           <ClipboardList className="mr-3 h-5 w-5" /> Orders
         </Link>
         <Link
-          to="#quotes"
-          onClick={() => setActiveView("quotes")}
+          to="/admin/quotes"
           className={`flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700 ${
-            activeView === "quotes" ? "bg-gray-900 text-white" : "text-gray-300"
+            isActive("/admin/quotes")
+              ? "bg-gray-900 text-white"
+              : "text-gray-300"
           }`}>
           <FileQuestion className="mr-3 h-5 w-5" /> Quotes
         </Link>
         <Link
-          to="#clients"
-          onClick={() => setActiveView("clients")}
+          to="/admin/clients"
           className={`flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700 ${
-            activeView === "clients"
+            isActive("/admin/clients")
               ? "bg-gray-900 text-white"
               : "text-gray-300"
           }`}>
           <UsersIcon className="mr-3 h-5 w-5" /> Clients
         </Link>
         <Link
-          to="#settings"
-          onClick={() => setActiveView("settings")}
+          to="/admin/settings"
           className={`flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700 ${
-            activeView === "settings"
+            isActive("/admin/settings")
               ? "bg-gray-900 text-white"
               : "text-gray-300"
           }`}>
           <Settings className="mr-3 h-5 w-5" /> Settings
         </Link>
         <Link
-          to="#create-quote"
-          onClick={() => setActiveView("create-quote")}
+          to="/admin/create-quote"
           className={`flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700 ${
-            activeView === "create-quote"
+            isActive("/admin/create-quote")
               ? "bg-gray-900 text-white"
               : "text-gray-300"
           }`}>

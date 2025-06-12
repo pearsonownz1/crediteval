@@ -1,14 +1,17 @@
 import React from "react";
+import { useLocation } from "react-router-dom"; // Import useLocation
 import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type ActiveView = "orders" | "quotes" | "clients" | "settings" | "create-quote";
 
-interface HeaderProps {
-  activeView: ActiveView;
-}
+interface HeaderProps {} // No longer needs activeView
 
-export const Header: React.FC<HeaderProps> = ({ activeView }) => {
+export const Header: React.FC<HeaderProps> = () => {
+  const location = useLocation();
+  const pathSegments = location.pathname.split("/");
+  const activeView =
+    (pathSegments[pathSegments.length - 1] as ActiveView) || "orders"; // Derive activeView from pathname
   return (
     <header className="mb-8">
       <h1 className="text-3xl font-bold text-navy-700">
