@@ -57,12 +57,22 @@ serve(async (req) => {
       quoteId, // Only expect quoteId for this function
       services, // Keep services here for logging, but make it optional in update
       currency = "usd",
+      customerEmail, // Added for Checkout Session
+      successUrl, // Added for Checkout Session
+      cancelUrl, // Added for Checkout Session
+      name, // Added for Checkout Session metadata
+      service_type, // Added for Checkout Session metadata
     } = requestBody;
 
     console.log(`Extracted amount: ${amount} (type: ${typeof amount})`);
     console.log(`Extracted quoteId: ${quoteId} (type: ${typeof quoteId})`); // Log quoteId
     console.log(`Extracted services: `, services); // Log services to see if it's undefined
     console.log(`Extracted currency: ${currency}`);
+    console.log(`Extracted customerEmail: ${customerEmail}`);
+    console.log(`Extracted successUrl: ${successUrl}`);
+    console.log(`Extracted cancelUrl: ${cancelUrl}`);
+    console.log(`Extracted name: ${name}`);
+    console.log(`Extracted service_type: ${service_type}`);
 
     // --- Input Validation ---
     if (!amount || typeof amount !== "number" || amount < 50) {
@@ -76,18 +86,30 @@ serve(async (req) => {
       console.error("Quote ID validation failed: Invalid type.", quoteId);
       throw new Error("Invalid or missing quoteId.");
     }
+    if (!customerEmail || typeof customerEmail !== "string") {
+      console.error("Customer Email validation failed:", customerEmail);
+      throw new Error("Missing or invalid customerEmail.");
+    }
+    if (!successUrl || typeof successUrl !== "string") {
+      console.error("Success URL validation failed:", successUrl);
+      throw new Error("Missing or invalid successUrl.");
+    }
+    if (!cancelUrl || typeof cancelUrl !== "string") {
+      console.error("Cancel URL validation failed:", cancelUrl);
+      throw new Error("Missing or invalid cancelUrl.");
+    }
     // --- End Input Validation ---
 
     const targetId = quoteId; // For quotes, targetId is always quoteId
     const targetType = "quote";
 
     console.log(
-      `Validation passed. Creating Payment Intent for ${targetType} ${targetId} with amount ${amount}`
+      `Validation passed. Creating Checkout Session for ${targetType} ${targetId} with amount ${amount}`
     );
 
     // --- Check if Quote Exists and Get Details (Optional but Recommended) ---
     // You might want to fetch the quote from Supabase here to confirm the amount
-    // and ensure the quote exists before creating the Payment Intent.
+    // and ensure the quote exists before creating the Checkout Session.
     // const { data: quoteData, error: quoteError } = await supabaseAdmin
     //   .from('quotes')
     //   .select('price, status') // Select relevant fields
@@ -111,86 +133,63 @@ serve(async (req) => {
     // }
     // --- End Quote Check ---
 
-    // Create a Stripe Payment Intent
-    let paymentIntent;
+    // Create a Stripe Checkout Session
+    let session;
     try {
-      const paymentIntentParams: Stripe.PaymentIntentCreateParams = {
-        amount: amount, // Amount in cents
-        currency: currency,
-        metadata: {
-          quote_id: quoteId, // Add quote_id to metadata
-          // Add any other relevant metadata you might need
-        },
+      const checkoutSessionParams: Stripe.Checkout.SessionCreateParams = {
         payment_method_types: ["card"],
+        line_items: [
+          {
+            price_data: {
+              currency: currency,
+              product_data: {
+                name: `Quote for ${name || "Services"}`, // Use name from metadata or generic
+                description: `Service Type: ${service_type || "N/A"}`, // Use service_type from metadata or generic
+                metadata: {
+                  quote_id: quoteId,
+                },
+              },
+              unit_amount: amount, // Amount in cents
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        customer_email: customerEmail,
+        metadata: {
+          quote_id: quoteId, // Add quote_id to session metadata
+        },
       };
 
-      console.log("Creating Payment Intent with params:", paymentIntentParams);
-      paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
+      console.log(
+        "Creating Checkout Session with params:",
+        checkoutSessionParams
+      );
+      session = await stripe.checkout.sessions.create(checkoutSessionParams);
 
       console.log(
-        `Stripe Payment Intent ${paymentIntent.id} created for ${targetType} ${targetId}.`
+        `Stripe Checkout Session ${session.id} created for ${targetType} ${targetId}.`
       );
     } catch (stripeError: any) {
-      console.error(`Stripe Payment Intent creation failed:`, stripeError);
+      console.error(`Stripe Checkout Session creation failed:`, stripeError);
       throw new Error(
-        `Stripe Payment Intent creation failed: ${stripeError.message}`
+        `Stripe Checkout Session creation failed: ${stripeError.message}`
       );
     }
 
-    // --- Update Quote Status/Payment Intent ID using Service Role ---
-    try {
-      console.log(
-        `Attempting to update ${targetType} ID: ${targetId} with payment intent ID: ${paymentIntent.id}`
-      );
+    // IMPORTANT: Do NOT update the database here.
+    // The database update (e.g., setting status to 'Paid' and storing session ID)
+    // should happen in a Stripe Webhook handler (e.g., for 'checkout.session.completed' event).
+    // This ensures the database is updated only after successful payment.
 
-      const updateData: {
-        stripe_payment_intent_id: string;
-        status: string;
-        price?: number;
-        services?: any; // Make services optional
-      } = {
-        stripe_payment_intent_id: paymentIntent.id,
-        status: "pending_payment",
-      };
+    // Log the session ID before returning
+    console.log(`Returning sessionId for Checkout Session ${session.id}`);
 
-      if (services !== undefined) {
-        updateData.services = services;
-      }
-
-      updateData.price = amount / 100; // Store amount in dollars for quotes table
-      const { error: updateError } = await supabaseAdmin
-        .from("quotes") // Always update the 'quotes' table
-        .update(updateData)
-        .eq("id", quoteId);
-
-      if (updateError) {
-        console.error(
-          `DB UPDATE FAILED for ${targetType} ${targetId}. Error:`,
-          JSON.stringify(updateError, null, 2)
-        );
-        // Log the error but don't fail the request, as the clientSecret is the priority here
-      } else {
-        console.log(
-          `DB UPDATE SUCCEEDED for ${targetType} ${targetId}. Stored payment intent ID and updated status/amount.`
-        );
-      }
-    } catch (dbError) {
-      console.error(
-        `Database exception updating ${targetType} ${targetId}:`,
-        dbError
-      );
-      throw new Error(`Database update failed: ${dbError.message}`); // Re-throw to ensure client gets error
-    }
-    // --- End Update Quote Status ---
-
-    // Log the client secret before returning
-    console.log(
-      `Returning clientSecret for Payment Intent ${paymentIntent.id}`
-    );
-
-    // Return the client secret
+    // Return the session ID
     return new Response(
-      JSON.stringify({ clientSecret: paymentIntent.client_secret }), // Return the client secret
+      JSON.stringify({ sessionId: session.id }), // Return the session ID
       {
         headers: {
           ...getAllowedCorsHeaders(origin),
@@ -200,7 +199,7 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error("Error processing payment intent request:", error);
+    console.error("Error processing quote payment intent request:", error);
     // Check if it's a Stripe error object
     const errorMessage =
       error instanceof Error ? error.message : "Internal server error.";
