@@ -5,6 +5,7 @@ import { Quote } from "../../../types/quote";
 import { supabase } from "../../../lib/supabaseClient";
 import { Button } from "@/components/ui/button"; // Import Button
 import { Input } from "@/components/ui/input"; // Import Input
+import { useToast } from "@/components/ui/use-toast"; // Import useToast
 
 export const QuoteDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -13,6 +14,8 @@ export const QuoteDetails: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isEditingPrice, setIsEditingPrice] = useState<boolean>(false);
   const [editablePrice, setEditablePrice] = useState<string>("");
+  const [isSendingEmail, setIsSendingEmail] = useState<boolean>(false); // New state for email sending
+  const { toast } = useToast(); // Initialize toast
 
   useEffect(() => {
     const fetchQuote = async () => {
@@ -120,6 +123,56 @@ export const QuoteDetails: React.FC = () => {
     }
   };
 
+  const handleEmailClient = async () => {
+    if (!quote?.id || !quote?.email || !quote?.name) {
+      toast({
+        title: "Error",
+        description: "Missing quote details to send email.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSendingEmail(true);
+    try {
+      const quotePaymentUrl = `${window.location.origin}/quote-payment/${quote.id}`;
+
+      const { data, error } = await supabase.functions.invoke(
+        "send-quote-payment-link-email",
+        {
+          body: JSON.stringify({
+            quoteId: quote.id,
+            clientEmail: quote.email,
+            clientName: quote.name,
+            quotePaymentUrl: quotePaymentUrl,
+          }),
+        }
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      if (data.success) {
+        toast({
+          title: "Success",
+          description: "Quote payment link email sent successfully!",
+        });
+      } else {
+        throw new Error(data.message || "Failed to send email.");
+      }
+    } catch (err: any) {
+      console.error("Error sending quote payment link email:", err);
+      toast({
+        title: "Error",
+        description: `Failed to send email: ${err.message || "Unknown error"}`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
   return (
     <div className="p-6 bg-white shadow-md rounded-lg">
       <h2 className="text-2xl font-bold mb-6">
@@ -180,6 +233,14 @@ export const QuoteDetails: React.FC = () => {
               <Button onClick={handleEditPrice} size="sm" variant="outline">
                 Edit
               </Button>
+              {quote.price && quote.price > 0 && (
+                <Button
+                  onClick={handleEmailClient}
+                  size="sm"
+                  disabled={isSendingEmail}>
+                  {isSendingEmail ? "Sending..." : "Email Client"}
+                </Button>
+              )}
             </div>
           )}
         </div>
