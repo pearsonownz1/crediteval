@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { Database } from "@/types/supabase";
-import { usePostHog } from "posthog-js/react"; // Import usePostHog
+import { usePostHog } from "posthog-js/react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -14,18 +14,18 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Terminal } from "lucide-react";
+import { Elements, CardElement } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
+import { useQuotePaymentProcessing } from "./quote/hooks/useQuotePaymentProcessing.ts";
 
-// Log the key being used for initialization
 const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
 console.log(
   "Stripe Publishable Key used:",
   stripePublishableKey
     ? `${stripePublishableKey.substring(0, 6)}...`
     : "MISSING!"
-); // Log prefix only
+);
 
-// Ensure your Stripe publishable key is in environment variables
 const stripePromise = loadStripe(stripePublishableKey);
 
 type Quote = Database["public"]["Tables"]["quotes"]["Row"];
@@ -33,54 +33,58 @@ type Quote = Database["public"]["Tables"]["quotes"]["Row"];
 export function QuotePaymentPage() {
   const { quoteId } = useParams<{ quoteId: string }>();
   const navigate = useNavigate();
-  const posthog = usePostHog(); // Get PostHog instance
+  const posthog = usePostHog();
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+  const {
+    paymentProcessing,
+    error: paymentError,
+    setError: setPaymentError,
+    processQuotePayment,
+    isStripeReady,
+  } = useQuotePaymentProcessing();
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchQuote = async () => {
       if (!quoteId) {
-        setError("Invalid quote link.");
+        setFetchError("Invalid quote link.");
         setLoading(false);
         return;
       }
 
       setLoading(true);
-      setError(null);
+      setFetchError(null);
       try {
-        const { data, error: fetchError } = await supabase
+        const { data, error: supabaseFetchError } = await supabase
           .from("quotes")
           .select("*")
           .eq("id", quoteId)
           .single();
 
-        if (fetchError) {
-          if (fetchError.code === "PGRST116") {
-            // PostgREST error code for "Not found"
-            setError(
+        if (supabaseFetchError) {
+          if (supabaseFetchError.code === "PGRST116") {
+            setFetchError(
               "Quote not found. Please check the link or request a new quote."
             );
           } else {
-            throw fetchError;
+            throw supabaseFetchError;
           }
         } else if (!data) {
-          setError(
+          setFetchError(
             "Quote not found. Please check the link or request a new quote."
           );
         } else {
-          // Validate quote status
           if (data.status === "Paid") {
-            setError("This quote has already been paid.");
-            // Optional: Redirect to a success/confirmation page?
-            // navigate('/order-success'); // Example redirect
+            setFetchError("This quote has already been paid.");
           } else if (
             data.status === "Expired" ||
             (data.expires_at && new Date(data.expires_at) < new Date())
           ) {
-            setError("This quote has expired. Please request a new quote.");
-            // Optionally update status if expired but not marked yet
+            setFetchError(
+              "This quote has expired. Please request a new quote."
+            );
             if (data.status !== "Expired") {
               await supabase
                 .from("quotes")
@@ -88,102 +92,46 @@ export function QuotePaymentPage() {
                 .eq("id", quoteId);
             }
           } else if (data.status !== "Pending") {
-            setError(
+            setFetchError(
               `This quote cannot be paid (status: ${data.status}). Please contact support.`
             );
           } else {
-            // Quote is valid and pending, capture checkout started event
             setQuote(data);
             if (posthog && data.id && data.price) {
               posthog.capture("checkout_started", {
                 quote_id: data.id,
                 amount: data.price,
-                service_type: data.service_type, // Add service type for context
+                service_type: data.service_type,
               });
             }
           }
         }
       } catch (err: any) {
         console.error("Error fetching quote:", err);
-        setError(err.message || "Failed to load quote details.");
+        setFetchError(err.message || "Failed to load quote details.");
       } finally {
         setLoading(false);
       }
     };
 
     fetchQuote();
-  }, [quoteId, navigate]);
+  }, [quoteId, navigate, posthog]);
 
-  const handlePayment = async () => {
-    if (!quote || !quote.price || !quote.email || !quote.id) {
-      // Changed client_email to email
-      setError("Cannot proceed with payment. Quote details are missing.");
+  const handlePaymentSubmit = async () => {
+    if (!quote || !quote.price || !quote.id) {
+      setPaymentError(
+        "Cannot proceed with payment. Quote details are missing."
+      );
       return;
     }
 
-    setIsProcessingPayment(true);
-    setError(null);
-
-    try {
-      // 1. Call your backend function to create a Stripe Checkout Session
-      const { data: sessionData, error: functionError } =
-        await supabase.functions.invoke("create-quote-payment-intent", {
-          // Changed function name
-          body: {
-            amount: quote.price * 100, // Stripe expects amount in cents
-            currency: "usd",
-            customerEmail: quote.email,
-            quoteId: quote.id, // Pass quoteId explicitly
-            // No orderId needed for this function
-            metadata: {
-              // Pass quote ID to link payment back
-              name: quote.name,
-              service_type: quote.service_type,
-            },
-            // Add success/cancel URLs relative to your frontend app
-            successUrl: `${window.location.origin}/payment-success?session_id={CHECKOUT_SESSION_ID}&quote_id=${quote.id}`,
-            cancelUrl: window.location.href, // Return to this page on cancel
-          },
-        });
-
-      if (functionError) {
-        console.error("Supabase function invocation error:", functionError);
-        throw functionError;
+    await processQuotePayment(
+      quote.id,
+      Math.round(quote.price * 100),
+      (data) => {
+        console.log("Payment successful:", data);
       }
-
-      // Log the raw response data from the function
-      console.log("Received sessionData from function:", sessionData);
-
-      const { sessionId } = sessionData;
-      console.log("Extracted sessionId:", sessionId); // Log the extracted ID
-
-      if (!sessionId || typeof sessionId !== "string") {
-        // Add type check
-        console.error("Invalid or missing sessionId received:", sessionId);
-        throw new Error(
-          "Failed to get valid Stripe Checkout session ID from function."
-        );
-      }
-
-      // 2. Redirect to Stripe Checkout
-      const stripe = await stripePromise;
-      if (!stripe) throw new Error("Stripe.js failed to load.");
-
-      const { error: stripeError } = await stripe.redirectToCheckout({
-        sessionId,
-      });
-
-      if (stripeError) {
-        console.error("Stripe redirect error:", stripeError);
-        setError(`Payment failed: ${stripeError.message}`);
-      }
-      // If redirect is successful, the user won't see the code below this point
-    } catch (paymentError: any) {
-      console.error("Payment processing error:", paymentError);
-      setError(`Failed to initiate payment: ${paymentError.message}`);
-    } finally {
-      setIsProcessingPayment(false);
-    }
+    );
   };
 
   if (loading) {
@@ -194,61 +142,86 @@ export function QuotePaymentPage() {
     );
   }
 
+  const displayError = fetchError || paymentError;
+
   return (
-    <div className="container mx-auto max-w-2xl py-12 px-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Pay Your Quote</CardTitle>
-          <CardDescription>
-            Review your quote details and proceed to payment.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {error && (
-            <Alert variant="destructive">
-              <Terminal className="h-4 w-4" />
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-          {quote && !error && (
-            <div className="space-y-2">
-              <p>
-                <strong>Quote ID:</strong> {quote.id.substring(0, 8)}...
-              </p>
-              <p>
-                <strong>Client:</strong> {quote.name}
-              </p>{" "}
-              {/* Changed from client_name */}
-              <p>
-                <strong>Email:</strong> {quote.email}
-              </p>{" "}
-              {/* Changed client_email to email */}
-              <p>
-                <strong>Service:</strong> {quote.service_type}
-              </p>
-              <p className="text-lg font-semibold">
-                <strong>Total Price:</strong> ${Number(quote.price).toFixed(2)}
-              </p>
-              {quote.expires_at && (
-                <p className="text-sm text-muted-foreground">
-                  Expires on: {new Date(quote.expires_at).toLocaleDateString()}
+    <Elements stripe={stripePromise}>
+      <div className="container mx-auto max-w-2xl py-12 px-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Pay Your Quote</CardTitle>
+            <CardDescription>
+              Review your quote details and proceed to payment.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {displayError && (
+              <Alert variant="destructive">
+                <Terminal className="h-4 w-4" />
+                <AlertTitle>Error</AlertTitle>
+                <AlertDescription>{displayError}</AlertDescription>
+              </Alert>
+            )}
+            {quote && !displayError && (
+              <div className="space-y-2">
+                <p>
+                  <strong>Quote ID:</strong> {quote.id.substring(0, 8)}...
                 </p>
-              )}
-            </div>
+                <p>
+                  <strong>Client:</strong> {quote.name}
+                </p>
+                <p>
+                  <strong>Email:</strong> {quote.email}
+                </p>
+                <p>
+                  <strong>Service:</strong> {quote.service_type}
+                </p>
+                <p className="text-lg font-semibold">
+                  <strong>Total Price:</strong> $
+                  {Number(quote.price).toFixed(2)}
+                </p>
+                {quote.expires_at && (
+                  <p className="text-sm text-muted-foreground">
+                    Expires on:{" "}
+                    {new Date(quote.expires_at).toLocaleDateString()}
+                  </p>
+                )}
+                <div className="mt-4 p-4 border rounded-md">
+                  <h3 className="text-md font-semibold mb-2">
+                    Credit Card Details
+                  </h3>
+                  <CardElement
+                    options={{
+                      style: {
+                        base: {
+                          fontSize: "16px",
+                          color: "#424770",
+                          "::placeholder": {
+                            color: "#aab7c4",
+                          },
+                        },
+                        invalid: {
+                          color: "#9e2146",
+                        },
+                      },
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </CardContent>
+          {!displayError && quote && (
+            <CardFooter>
+              <Button
+                className="w-full"
+                onClick={handlePaymentSubmit}
+                disabled={paymentProcessing || loading || !isStripeReady}>
+                {paymentProcessing ? "Processing..." : "Pay Quote"}
+              </Button>
+            </CardFooter>
           )}
-        </CardContent>
-        {!error && quote && (
-          <CardFooter>
-            <Button
-              className="w-full"
-              onClick={handlePayment}
-              disabled={isProcessingPayment || loading}>
-              {isProcessingPayment ? "Processing..." : "Proceed to Payment"}
-            </Button>
-          </CardFooter>
-        )}
-      </Card>
-    </div>
+        </Card>
+      </div>
+    </Elements>
   );
 }

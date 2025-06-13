@@ -54,25 +54,13 @@ serve(async (req) => {
     // Destructure expected parameters for Quote Payment Intent
     const {
       amount,
-      quoteId, // Only expect quoteId for this function
-      services, // Keep services here for logging, but make it optional in update
+      quoteId, // Expect quoteId for this function
       currency = "usd",
-      customerEmail, // Added for Checkout Session
-      successUrl, // Added for Checkout Session
-      cancelUrl, // Added for Checkout Session
-      name, // Added for Checkout Session metadata
-      service_type, // Added for Checkout Session metadata
     } = requestBody;
 
     console.log(`Extracted amount: ${amount} (type: ${typeof amount})`);
-    console.log(`Extracted quoteId: ${quoteId} (type: ${typeof quoteId})`); // Log quoteId
-    console.log(`Extracted services: `, services); // Log services to see if it's undefined
+    console.log(`Extracted quoteId: ${quoteId} (type: ${typeof quoteId})`);
     console.log(`Extracted currency: ${currency}`);
-    console.log(`Extracted customerEmail: ${customerEmail}`);
-    console.log(`Extracted successUrl: ${successUrl}`);
-    console.log(`Extracted cancelUrl: ${cancelUrl}`);
-    console.log(`Extracted name: ${name}`);
-    console.log(`Extracted service_type: ${service_type}`);
 
     // --- Input Validation ---
     if (!amount || typeof amount !== "number" || amount < 50) {
@@ -86,115 +74,94 @@ serve(async (req) => {
       console.error("Quote ID validation failed: Invalid type.", quoteId);
       throw new Error("Invalid or missing quoteId.");
     }
-    if (!customerEmail || typeof customerEmail !== "string") {
-      console.error("Customer Email validation failed:", customerEmail);
-      throw new Error("Missing or invalid customerEmail.");
-    }
-    if (!successUrl || typeof successUrl !== "string") {
-      console.error("Success URL validation failed:", successUrl);
-      throw new Error("Missing or invalid successUrl.");
-    }
-    if (!cancelUrl || typeof cancelUrl !== "string") {
-      console.error("Cancel URL validation failed:", cancelUrl);
-      throw new Error("Missing or invalid cancelUrl.");
-    }
     // --- End Input Validation ---
 
-    const targetId = quoteId; // For quotes, targetId is always quoteId
-    const targetType = "quote";
-
     console.log(
-      `Validation passed. Creating Checkout Session for ${targetType} ${targetId} with amount ${amount}`
+      `Validation passed. Creating Payment Intent for quote ${quoteId} with amount ${amount}`
     );
 
-    // --- Check if Quote Exists and Get Details (Optional but Recommended) ---
-    // You might want to fetch the quote from Supabase here to confirm the amount
-    // and ensure the quote exists before creating the Checkout Session.
-    // const { data: quoteData, error: quoteError } = await supabaseAdmin
-    //   .from('quotes')
-    //   .select('price, status') // Select relevant fields
-    //   .eq('id', quoteId)
-    //   .single();
-    //
-    // if (quoteError || !quoteData) {
-    //   console.error(`Quote ${quoteId} not found or error fetching:`, quoteError);
-    //   throw new Error(`Quote ${quoteId} not found.`);
-    // }
-    //
-    // // Optional: Verify amount matches the quote record
-    // if (quoteData.price * 100 !== amount) {
-    //    console.warn(`Amount mismatch for quote ${quoteId}. Request: ${amount}, DB: ${quoteData.price * 100}. Proceeding with requested amount.`);
-    //    // Decide how to handle mismatch - throw error or proceed?
-    // }
-    //
-    // if (quoteData.status === 'Paid') { // Prevent paying for already paid quote
-    //    console.error(`Quote ${quoteId} has already been paid.`);
-    //    throw new Error(`Quote ${quoteId} has already been paid.`);
-    // }
+    // --- Check if Quote Exists and Get Details (Recommended) ---
+    const { data: quoteData, error: quoteError } = await supabaseAdmin
+      .from("quotes")
+      .select("price, status, email, first_name, last_name") // Select relevant fields
+      .eq("id", quoteId)
+      .single();
+
+    if (quoteError || !quoteData) {
+      console.error(
+        `Quote ${quoteId} not found or error fetching:`,
+        quoteError
+      );
+      throw new Error(`Quote ${quoteId} not found.`);
+    }
+
+    // Verify amount matches the quote record
+    if (quoteData.price * 100 !== amount) {
+      console.warn(
+        `Amount mismatch for quote ${quoteId}. Request: ${amount}, DB: ${
+          quoteData.price * 100
+        }. Proceeding with requested amount.`
+      );
+      // Decide how to handle mismatch - throw error or proceed?
+    }
+
+    if (quoteData.status === "Paid") {
+      // Prevent paying for already paid quote
+      console.error(`Quote ${quoteId} has already been paid.`);
+      throw new Error(`Quote ${quoteId} has already been paid.`);
+    }
     // --- End Quote Check ---
 
-    // Create a Stripe Checkout Session
-    let session;
+    // Create a Stripe Payment Intent
+    let paymentIntent;
     try {
-      const checkoutSessionParams: Stripe.Checkout.SessionCreateParams = {
-        payment_method_types: ["card"],
-        line_items: [
-          {
-            price_data: {
-              currency: currency,
-              product_data: {
-                name: `Quote for ${name || "Services"}`, // Use name from metadata or generic
-                description: `Service Type: ${service_type || "N/A"}`, // Use service_type from metadata or generic
-                metadata: {
-                  quote_id: quoteId,
-                },
-              },
-              unit_amount: amount, // Amount in cents
-            },
-            quantity: 1,
-          },
-        ],
-        mode: "payment",
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        customer_email: customerEmail,
+      paymentIntent = await stripe.paymentIntents.create({
+        amount: amount, // Amount in cents
+        currency: currency,
         metadata: {
-          quote_id: quoteId, // Add quote_id to session metadata
+          quote_id: quoteId,
+          customer_email: quoteData.email,
+          customer_name: `${quoteData.first_name} ${quoteData.last_name}`,
         },
-      };
+      });
 
       console.log(
-        "Creating Checkout Session with params:",
-        checkoutSessionParams
-      );
-      session = await stripe.checkout.sessions.create(checkoutSessionParams);
-
-      console.log(
-        `Stripe Checkout Session ${session.id} created for ${targetType} ${targetId}.`
+        `Stripe Payment Intent ${paymentIntent.id} created for quote ${quoteId}.`
       );
     } catch (stripeError: any) {
-      console.error(`Stripe Checkout Session creation failed:`, stripeError);
+      console.error(`Stripe Payment Intent creation failed:`, stripeError);
       throw new Error(
-        `Stripe Checkout Session creation failed: ${stripeError.message}`
+        `Stripe Payment Intent creation failed: ${stripeError.message}`
       );
     }
 
-    // IMPORTANT: Do NOT update the database here.
-    // The database update (e.g., setting status to 'Paid' and storing session ID)
-    // should happen in a Stripe Webhook handler (e.g., for 'checkout.session.completed' event).
-    // This ensures the database is updated only after successful payment.
+    // Update the quote with the payment intent ID
+    const { error: updateError } = await supabaseAdmin
+      .from("quotes")
+      .update({
+        stripe_payment_intent_id: paymentIntent.id,
+        status: "pending_payment", // Set status to pending payment
+      })
+      .eq("id", quoteId);
 
-    // Log the session ID before returning
-    console.log(`Returning sessionId for Checkout Session ${session.id}`);
+    if (updateError) {
+      console.error(
+        `Failed to update quote ${quoteId} with payment intent ID:`,
+        updateError
+      );
+      throw new Error(
+        `Failed to update quote with payment intent ID: ${updateError.message}`
+      );
+    }
 
-    // Return the session ID
+    // Return the client secret
     return new Response(
-      JSON.stringify({ sessionId: session.id }), // Return the session ID
+      JSON.stringify({ clientSecret: paymentIntent.client_secret }),
       {
         headers: {
           ...getAllowedCorsHeaders(origin),
           "Content-Type": "application/json",
-        }, // Use dynamic headers
+        },
         status: 200,
       }
     );
