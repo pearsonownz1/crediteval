@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
-import { Database } from "@/types/supabase";
+// import { Database } from "@/types/supabase"; // Removed, using custom Quote type
+import { Quote } from "@/types/quote"; // Import custom Quote type
 import { usePostHog } from "posthog-js/react";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,7 +29,7 @@ console.log(
 
 const stripePromise = loadStripe(stripePublishableKey);
 
-type Quote = Database["public"]["Tables"]["quotes"]["Row"];
+// type Quote = Database["public"]["Tables"]["quotes"]["Row"]; // Removed, using custom Quote type
 
 export function QuotePaymentPage() {
   const { quoteId } = useParams<{ quoteId: string }>();
@@ -176,6 +177,40 @@ export function QuotePaymentPage() {
                 <p>
                   <strong>Service:</strong> {quote.service_type}
                 </p>
+
+                {/* Display new fields from services JSON */}
+                {quote.services?.delivery && (
+                  <p>
+                    <strong>Delivery:</strong> {quote.services.delivery}
+                  </p>
+                )}
+                {quote.services?.urgency && (
+                  <p>
+                    <strong>Urgency:</strong> {quote.services.urgency}
+                  </p>
+                )}
+                {quote.service_type === "Certified Translation" && (
+                  <>
+                    {quote.services?.language_from && (
+                      <p>
+                        <strong>Language From:</strong>{" "}
+                        {quote.services.language_from}
+                      </p>
+                    )}
+                    {quote.services?.language_to && (
+                      <p>
+                        <strong>Language To:</strong>{" "}
+                        {quote.services.language_to}
+                      </p>
+                    )}
+                    {quote.services?.total_page && (
+                      <p>
+                        <strong>Total Page:</strong> {quote.services.total_page}
+                      </p>
+                    )}
+                  </>
+                )}
+
                 <p className="text-lg font-semibold">
                   <strong>Total Price:</strong> $
                   {Number(quote.price).toFixed(2)}

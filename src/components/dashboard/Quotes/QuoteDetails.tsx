@@ -202,6 +202,56 @@ export const QuoteDetails: React.FC = () => {
           </span>
         </div>
 
+        {/* Display new fields from services JSON */}
+        {quote.services?.delivery && (
+          <div className="flex flex-col">
+            <span className="text-sm font-medium text-muted-foreground">
+              Delivery:
+            </span>
+            <span className="text-base">{quote.services.delivery}</span>
+          </div>
+        )}
+
+        {quote.services?.urgency && (
+          <div className="flex flex-col">
+            <span className="text-sm font-medium text-muted-foreground">
+              Urgency:
+            </span>
+            <span className="text-base">{quote.services.urgency}</span>
+          </div>
+        )}
+
+        {quote.service_type === "Certified Translation" && (
+          <>
+            {quote.services?.language_from && (
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-muted-foreground">
+                  Language From:
+                </span>
+                <span className="text-base">
+                  {quote.services.language_from}
+                </span>
+              </div>
+            )}
+            {quote.services?.language_to && (
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-muted-foreground">
+                  Language To:
+                </span>
+                <span className="text-base">{quote.services.language_to}</span>
+              </div>
+            )}
+            {quote.services?.total_page && (
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-muted-foreground">
+                  Total Page:
+                </span>
+                <span className="text-base">{quote.services.total_page}</span>
+              </div>
+            )}
+          </>
+        )}
+
         <div className="flex flex-col">
           <span className="text-sm font-medium text-muted-foreground">
             Price:
