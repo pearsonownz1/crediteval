@@ -37,10 +37,33 @@ serve(async (req) => {
 
       Quote Details:
       - Quote ID: ${quote.id}
-      - Amount Paid: $${(quote.total_amount / 100).toFixed(2)}
+      - Service Type: ${quote.service_type}
+      ${
+        quote.services?.delivery ? `- Delivery: ${quote.services.delivery}` : ""
+      }
+      ${quote.services?.urgency ? `- Urgency: ${quote.services.urgency}` : ""}
+      ${
+        quote.service_type === "Certified Translation" &&
+        quote.services?.language_from
+          ? `- Language From: ${quote.services.language_from}`
+          : ""
+      }
+      ${
+        quote.service_type === "Certified Translation" &&
+        quote.services?.language_to
+          ? `- Language To: ${quote.services.language_to}`
+          : ""
+      }
+      ${
+        quote.service_type === "Certified Translation" &&
+        quote.services?.total_page
+          ? `- Total Page: ${quote.services.total_page}`
+          : ""
+      }
+      - Amount Paid: $${(quote.price / 100).toFixed(2)}
       - Payment Intent ID: ${paymentIntentId}
-      - Customer Email: ${quote.customer_email || "N/A"}
-      - Customer Name: ${quote.customer_name || "N/A"}
+      - Customer Email: ${quote.email || "N/A"}
+      - Customer Name: ${quote.name || "N/A"}
       - Status: ${quote.status}
 
       Please log in to the admin dashboard for more details.
