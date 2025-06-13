@@ -107,6 +107,7 @@ serve(async (req) => {
       name: requestData.name,
       email: requestData.email,
       phone: requestData.phone,
+      service_type: requestData.service,
       services: servicesJson, // New services JSON column
       document_paths: requestData.documentPaths,
     });
@@ -118,6 +119,7 @@ serve(async (req) => {
           name: requestData.name,
           email: requestData.email,
           phone: requestData.phone,
+          service_type: requestData.service,
           services: servicesJson, // Insert the JSON object
           document_paths: requestData.documentPaths,
         },
