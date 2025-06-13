@@ -188,6 +188,49 @@ export const QuoteDetails: React.FC = () => {
 
         <div className="flex flex-col">
           <span className="text-sm font-medium text-muted-foreground">
+            Price:
+          </span>
+          {isEditingPrice ? (
+            <div className="flex items-center space-x-2">
+              <Input
+                type="number"
+                value={editablePrice}
+                onChange={(e) => setEditablePrice(e.target.value)}
+                className="w-32"
+                step="0.01"
+              />
+              <Button onClick={handleSavePrice} size="sm">
+                Save
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setIsEditingPrice(false)}
+                size="sm">
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center space-x-2">
+              <span className="text-base">
+                ${Number(quote.price || 0).toFixed(2)}
+              </span>
+              <Button onClick={handleEditPrice} size="sm" variant="outline">
+                Edit
+              </Button>
+              {quote.price && quote.price > 0 && (
+                <Button
+                  onClick={handleEmailClient}
+                  size="sm"
+                  disabled={isSendingEmail}>
+                  {isSendingEmail ? "Sending..." : "Email Client"}
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-muted-foreground">
             Email:
           </span>
           <span className="text-base">{quote.email}</span>
@@ -251,49 +294,6 @@ export const QuoteDetails: React.FC = () => {
             )}
           </>
         )}
-
-        <div className="flex flex-col">
-          <span className="text-sm font-medium text-muted-foreground">
-            Price:
-          </span>
-          {isEditingPrice ? (
-            <div className="flex items-center space-x-2">
-              <Input
-                type="number"
-                value={editablePrice}
-                onChange={(e) => setEditablePrice(e.target.value)}
-                className="w-32"
-                step="0.01"
-              />
-              <Button onClick={handleSavePrice} size="sm">
-                Save
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setIsEditingPrice(false)}
-                size="sm">
-                Cancel
-              </Button>
-            </div>
-          ) : (
-            <div className="flex items-center space-x-2">
-              <span className="text-base">
-                ${Number(quote.price || 0).toFixed(2)}
-              </span>
-              <Button onClick={handleEditPrice} size="sm" variant="outline">
-                Edit
-              </Button>
-              {quote.price && quote.price > 0 && (
-                <Button
-                  onClick={handleEmailClient}
-                  size="sm"
-                  disabled={isSendingEmail}>
-                  {isSendingEmail ? "Sending..." : "Email Client"}
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
 
         <div className="flex flex-col">
           <span className="text-sm font-medium text-muted-foreground">
