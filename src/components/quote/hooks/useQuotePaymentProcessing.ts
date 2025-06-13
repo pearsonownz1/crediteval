@@ -6,6 +6,7 @@ import {
   updateQuoteStatus,
 } from "../../../utils/quote/quoteAPI";
 import { Quote } from "../../../types/quote"; // Assuming you have a Quote type
+import { supabase } from "../../../lib/supabaseClient";
 
 export const useQuotePaymentProcessing = () => {
   const [paymentProcessing, setPaymentProcessing] = useState(false);
@@ -65,6 +66,24 @@ export const useQuotePaymentProcessing = () => {
       if (paymentIntent?.status === "succeeded") {
         // Update quote status to 'Paid'
         await updateQuoteStatus(quoteId, "Paid");
+
+        // Call the Supabase function to send email to support
+        const { data, error: sendEmailError } = await supabase.functions.invoke(
+          "send-quote-payment-email",
+          {
+            body: { quoteId, paymentIntentId: paymentIntent.id },
+          }
+        );
+
+        if (sendEmailError) {
+          console.error(
+            "Error invoking send-quote-payment-email:",
+            sendEmailError
+          );
+          // Optionally, handle this error more gracefully, e.g., log to an error tracking system
+        } else {
+          console.log("send-quote-payment-email invoked successfully:", data);
+        }
 
         setPaymentProcessing(false);
         onComplete({

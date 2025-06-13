@@ -1,0 +1,3 @@
+name = "send-quote-payment-email"
+main = "index.ts"
+runtime = "deno"
