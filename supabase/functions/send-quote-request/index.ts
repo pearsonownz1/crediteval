@@ -39,9 +39,11 @@ interface QuoteRequestData {
   phone?: string;
   documentPaths?: string[];
   submittedAt: string;
-  // Add optional language fields
   languageFrom?: string;
   languageTo?: string;
+  delivery?: string; // New field
+  urgency?: string; // New field
+  totalPage?: string; // New field
 }
 
 serve(async (req) => {
@@ -89,32 +91,39 @@ serve(async (req) => {
     }
 
     // 3. Insert data into the 'quotes' table
+    // Construct the services JSON object
+    const servicesJson = {
+      service_type: requestData.service,
+      delivery: requestData.delivery,
+      urgency: requestData.urgency,
+      ...(requestData.languageFrom && {
+        language_from: requestData.languageFrom,
+      }),
+      ...(requestData.languageTo && { language_to: requestData.languageTo }),
+      ...(requestData.totalPage && { total_page: requestData.totalPage }), // Include total_page
+    };
+
     console.log("Preparing to insert quote data:", {
       name: requestData.name,
       email: requestData.email,
-      // phone: requestData.phone, // Removed - Column does not exist
-      service_type: requestData.service, // Corrected column name
-      // language_from: requestData.languageFrom, // Removed - Column does not exist
-      // language_to: requestData.languageTo,     // Removed - Column does not exist
+      phone: requestData.phone,
+      services: servicesJson, // New services JSON column
       document_paths: requestData.documentPaths,
     });
+
     const { data: insertData, error: insertError } = await supabaseAdmin
       .from("quotes")
       .insert([
         {
           name: requestData.name,
           email: requestData.email,
-          // phone: requestData.phone, // Removed - Column does not exist
-          service_type: requestData.service, // Ensure this uses service_type for DB column
-          // language_from: requestData.languageFrom, // Removed - Column does not exist
-          // language_to: requestData.languageTo,     // Removed - Column does not exist
+          phone: requestData.phone,
+          services: servicesJson, // Insert the JSON object
           document_paths: requestData.documentPaths,
-          // status: 'new', // Default status is set in the table definition
-          // created_at is set automatically
         },
       ])
-      .select() // Optionally select the inserted data if needed
-      .single(); // Assuming you insert one quote at a time
+      .select()
+      .single();
 
     if (insertError) {
       console.error("!!! Database Insert Error:", insertError); // Make error more prominent
@@ -143,24 +152,22 @@ serve(async (req) => {
           attributes: {
             profile: {
               email: requestData.email,
-              // Optionally add other profile identifiers if available and desired
-              // name: requestData.name, // Klaviyo often uses standard profile properties
-              // phone_number: requestData.phone
             },
             metric: {
-              name: "quote_requested", // Define the new metric name
+              name: "quote_requested",
             },
             properties: {
-              // Map relevant properties from the quote request
-              quote_id: insertData.id, // Use the ID from the inserted row
+              quote_id: insertData.id,
               service_type: requestData.service,
-              name: requestData.name, // Include name in properties
-              phone: requestData.phone, // Include phone if provided
-              language_from: requestData.languageFrom, // Include language if provided
-              language_to: requestData.languageTo, // Include language if provided
+              name: requestData.name,
+              phone: requestData.phone,
+              language_from: requestData.languageFrom,
+              language_to: requestData.languageTo,
+              total_page: requestData.totalPage, // Include total_page
+              delivery: requestData.delivery, // Include delivery
+              urgency: requestData.urgency, // Include urgency
               document_count: requestData.documentPaths?.length || 0,
-              submitted_at: requestData.submittedAt, // Include submission timestamp
-              // Add any other relevant properties from requestData or insertData
+              submitted_at: requestData.submittedAt,
             },
           },
         },
@@ -220,6 +227,12 @@ serve(async (req) => {
         <li>Email: ${requestData.email}</li>
         ${requestData.phone ? `<li>Phone: ${requestData.phone}</li>` : ""}
         ${
+          requestData.delivery
+            ? `<li>Delivery: ${requestData.delivery}</li>`
+            : ""
+        }
+        ${requestData.urgency ? `<li>Urgency: ${requestData.urgency}</li>` : ""}
+        ${
           requestData.documentPaths && requestData.documentPaths.length > 0
             ? `<li>Documents: ${requestData.documentPaths.length} file(s) received</li>`
             : ""
@@ -234,9 +247,7 @@ serve(async (req) => {
       <h1>New Quote Request</h1>
       <p>A new quote request has been submitted:</p>
       <ul>
-        <li>Service Type: <strong>${
-          requestData.service
-        }</strong></li> <!-- Corrected label -->
+        <li>Service Type: <strong>${requestData.service}</strong></li>
         <li>Name: ${requestData.name}</li>
         <li>Email: ${requestData.email}</li>
         ${requestData.phone ? `<li>Phone: ${requestData.phone}</li>` : ""}
@@ -250,6 +261,17 @@ serve(async (req) => {
             ? `<li>Language To: ${requestData.languageTo}</li>`
             : ""
         }
+        ${
+          requestData.totalPage
+            ? `<li>Total Page: ${requestData.totalPage}</li>`
+            : ""
+        }
+        ${
+          requestData.delivery
+            ? `<li>Delivery: ${requestData.delivery}</li>`
+            : ""
+        }
+        ${requestData.urgency ? `<li>Urgency: ${requestData.urgency}</li>` : ""}
         <li>Submitted At: ${new Date(
           requestData.submittedAt
         ).toLocaleString()}</li>
