@@ -29,7 +29,7 @@ export const QuoteDetails: React.FC = () => {
       try {
         const { data, error } = await supabase
           .from("quotes")
-          .select("*, document_paths") // Select document_paths
+          .select("*")
           .eq("id", id)
           .single();
 
