@@ -284,7 +284,7 @@ serve(async (req) => {
               requestData.documentPaths.length
             }):</strong></p>
            <ul>${requestData.documentPaths
-             .map((path) => `<li>${path}</li>`)
+             .map((path) => `<li><a href="${path}">${path}</a></li>`)
              .join("")}</ul>
            <p><em>Note: Document paths refer to storage locations. Access them via your Supabase dashboard or appropriate tools.</em></p>`
           : "<p>No documents were uploaded with this request.</p>"
@@ -303,7 +303,7 @@ serve(async (req) => {
     const sendAdminEmail = resend.emails.send({
       from: fromEmail,
       to: "support@crediteval.com", // Send to support email
-      cc: ["staffan@gcs.org", "guy@gcs.org"], // CC additional staff
+      cc: ["staffan@gcs.org", "guy@gcs.org", "melgcsvalencia@gmail.com"], // CC additional staff
       subject: adminSubject,
       html: adminHtmlBody,
     });
