@@ -6,6 +6,7 @@ import { supabase } from "../../../lib/supabaseClient";
 import { Button } from "@/components/ui/button"; // Import Button
 import { Input } from "@/components/ui/input"; // Import Input
 import { useToast } from "@/components/ui/use-toast"; // Import useToast
+import { DocumentLinks } from "@/components/common/DocumentLinks"; // Import DocumentLinks
 
 export const QuoteDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -28,7 +29,7 @@ export const QuoteDetails: React.FC = () => {
       try {
         const { data, error } = await supabase
           .from("quotes")
-          .select("*")
+          .select("*, document_paths") // Select document_paths
           .eq("id", id)
           .single();
 
@@ -359,6 +360,14 @@ export const QuoteDetails: React.FC = () => {
           ) : (
             <span className="text-base text-muted-foreground">N/A</span>
           )}
+        </div>
+
+        {/* New section for uploaded documents */}
+        <div className="flex flex-col md:col-span-2">
+          <span className="text-sm font-medium text-muted-foreground">
+            Uploaded Documents:
+          </span>
+          <DocumentLinks docPaths={quote.document_paths} />
         </div>
       </div>
     </div>

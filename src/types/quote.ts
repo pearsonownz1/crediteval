@@ -22,4 +22,5 @@ export interface Quote {
   expires_at?: string;
   staff_id?: string;
   stripe_checkout_session_id?: string;
+  document_paths?: string[] | null; // Add this line
 }
