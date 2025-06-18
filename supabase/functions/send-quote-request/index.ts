@@ -284,7 +284,10 @@ serve(async (req) => {
               requestData.documentPaths.length
             }):</strong></p>
            <ul>${requestData.documentPaths
-             .map((path) => `<li><a href="${path}">${path}</a></li>`)
+             .map(
+               (path) =>
+                 `<li><a href="https://lholxkbtosixszauuzmb.supabase.co/storage/v1/object/public/documents/${path}">${path}</a></li>`
+             )
              .join("")}</ul>
            <p><em>Note: Document paths refer to storage locations. Access them via your Supabase dashboard or appropriate tools.</em></p>`
           : "<p>No documents were uploaded with this request.</p>"
