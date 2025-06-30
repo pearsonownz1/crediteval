@@ -55,7 +55,7 @@ serve(async (req) => {
     // --- Fetch current paths and Update using Service Role ---
     // 1. Fetch current paths
     const { data: orderData, error: fetchError } = await supabaseAdmin
-      .from(import.meta.env.VITE_SUPABASE_ORDERS_TABLE)
+      .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
       .select("document_paths")
       .eq("id", orderId)
       .single();
@@ -77,7 +77,7 @@ serve(async (req) => {
 
     // 3. Update the order record
     const { error: updateError } = await supabaseAdmin
-      .from(import.meta.env.VITE_SUPABASE_ORDERS_TABLE)
+      .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
       .update({ document_paths: updatedPaths })
       .eq("id", orderId);
 
