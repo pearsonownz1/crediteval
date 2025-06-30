@@ -161,7 +161,7 @@ serve(async (req) => {
       } else if (orderId) {
         updateData.total_amount = amount; // Ensure total_amount is stored/updated correctly
         updateResult = await supabaseAdmin
-          .from("orders") // Update the 'orders' table
+          .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
           .update(updateData)
           .eq("id", orderId);
       }

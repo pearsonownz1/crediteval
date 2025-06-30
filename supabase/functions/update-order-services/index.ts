@@ -46,7 +46,7 @@ serve(async (req) => {
     console.log(`Processing request to update services for order ${orderId}`);
 
     const { error: updateError } = await supabaseAdmin
-      .from("orders")
+      .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
       .update({ services: services })
       .eq("id", orderId);
 

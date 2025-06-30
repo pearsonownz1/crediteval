@@ -89,7 +89,7 @@ serve(async (req) => {
 
     // --- Fetch Order Details ---
     const { data: orderData, error: fetchError } = await supabaseAdmin
-      .from("orders")
+      .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
       .select(
         "id, first_name, last_name, email, services, total_amount, created_at"
       ) // Adjust columns as needed

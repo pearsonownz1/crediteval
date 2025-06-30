@@ -431,7 +431,7 @@ serve(async (req) => {
     // 1. Check if the order has already been paid or is pending payment
     if (orderData.orderId) {
       const { data: order, error: orderFetchError } = await supabaseAdmin
-        .from("orders")
+        .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
         .select("status")
         .eq("id", orderData.orderId)
         .single();
