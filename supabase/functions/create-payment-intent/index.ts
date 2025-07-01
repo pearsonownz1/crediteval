@@ -6,7 +6,12 @@ import { corsHeaders, getAllowedCorsHeaders } from "../_shared/cors.ts";
 console.log("Function starting (Payment Intent version)...");
 
 // IMPORTANT: Set these in your Supabase project's Function Environment Variables settings.
-const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
+// const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
+const stripeSecretKey =
+  Deno.env.get("APP_DEVELOPMENT") === "development"
+    ? Deno.env.get("STRIPE_TEST_SECRET_KEY")
+    : Deno.env.get("STRIPE_SECRET_KEY");
+
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
