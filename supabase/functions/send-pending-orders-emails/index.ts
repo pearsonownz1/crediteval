@@ -35,12 +35,12 @@ Deno.serve(async (req) => {
   for (const order of orders) {
     const emailData = {
       from: "noreply@mail.crediteval.com",
-      to: order.customer_email,
+      to: order.email,
       subject: "Your Order is Pending",
       html: `<p>Dear Customer,</p><p>Your order with ID <strong>${order.id}</strong> is currently pending. Please check your account for more details.</p>`,
     };
     console.log("order details", order);
-    console.log("Sending email to:", order.customer_email);
+    console.log("Sending email to:", order.email);
     const response = await fetch(resendUrl, {
       method: "POST",
       headers: {
@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify(emailData),
     });
-    console.log("Email sent to:", order.customer_email);
+    console.log("Email sent to:", order.email);
     if (!response.ok) {
       const errorResponse = await response.json();
       console.error("Error sending email:", errorResponse);
