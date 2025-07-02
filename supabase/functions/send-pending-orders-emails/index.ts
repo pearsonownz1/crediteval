@@ -40,6 +40,76 @@ const retryWithBackoff = async (
   }
 };
 
+const baseUrl = "https://crediteval.com"; // Your site URL
+
+const createResumeUrl = (order: any): string => {
+  const params = new URLSearchParams();
+  console.log("creating url params for order", order);
+  // Add customer info
+  if (order.customerInfo) {
+    if (order.customerInfo.firstName)
+      params.append("firstName", order.customerInfo.firstName);
+    if (order.customerInfo.lastName)
+      params.append("lastName", order.customerInfo.lastName);
+    if (order.customerInfo.email)
+      params.append("email", order.customerInfo.email);
+    if (order.customerInfo.phone)
+      params.append("phone", order.customerInfo.phone);
+    if (order.customerInfo.company)
+      params.append("company", order.customerInfo.company);
+  }
+
+  // Add order ID
+  if (order.id) {
+    params.append("orderId", order.id);
+  }
+
+  // Add service selection
+  if (order.services) {
+    if (order.services.type)
+      // Use 'type' instead of 'selectedService'
+      params.append("type", order.services.type);
+    if (order.services.urgency)
+      params.append("urgency", order.services.urgency);
+    if (order.services.deliveryType)
+      // Use 'deliveryType'
+      params.append("deliveryType", order.services.deliveryType);
+    if (order.services.pageCount)
+      params.append("pageCount", order.services.pageCount.toString());
+    if (order.services.evaluationType)
+      params.append("evaluationType", order.services.evaluationType);
+    if (order.services.languageFrom)
+      params.append("languageFrom", order.services.languageFrom);
+    if (order.services.languageTo)
+      params.append("languageTo", order.services.languageTo);
+    // Add visaType if service type is expert
+    if (order.services.type === "expert" && order.services.visaType)
+      params.append("visaType", order.services.visaType);
+
+    // Add shipping info
+    if (order.services.shippingInfo) {
+      if (order.services.shippingInfo.country)
+        params.append("country", order.services.shippingInfo.country);
+      if (order.services.shippingInfo.address)
+        params.append("address", order.services.shippingInfo.address);
+      if (order.services.shippingInfo.apartment)
+        params.append("apartment", order.services.shippingInfo.apartment);
+      if (order.services.shippingInfo.city)
+        params.append("city", order.services.shippingInfo.city);
+      if (order.services.shippingInfo.state)
+        params.append("state", order.services.shippingInfo.state);
+      if (order.services.shippingInfo.zip)
+        params.append("zip", order.services.shippingInfo.zip);
+    }
+  }
+
+  // Add current step
+  if (order.currentStep !== undefined)
+    params.append("step", order.currentStep.toString());
+
+  return `${baseUrl}/order-wizard?${params.toString()}`;
+};
+
 const sendPendingOrdersEmails = async (order: any) => {
   const {
     id,
@@ -53,6 +123,8 @@ const sendPendingOrdersEmails = async (order: any) => {
     status,
     phone,
   } = order;
+
+  const resumeUrl = createResumeUrl(order);
 
   const emailBody = `
     <h1>Pending Order Details</h1>
@@ -91,7 +163,7 @@ const sendPendingOrdersEmails = async (order: any) => {
         : ""
     }
     <p>You can resume your order by clicking the link below:</p>
-    <p><a href="https://yourwebsite.com/resume-order/${id}">Resume Order</a></p>
+    <p><a href="${resumeUrl}">Resume Order</a></p>
     <p>Thank you!</p>
   `;
 
