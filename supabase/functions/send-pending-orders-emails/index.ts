@@ -1,6 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+console.log("Sending Pending Orders Emails function starting...");
 Deno.serve(async (req) => {
+  console.log(
+    "inside deno serve - Sending Pending Orders Emails function starting..."
+  );
   if (req.method === "OPTIONS") {
     return new Response("ok", {
       status: 200,
@@ -10,6 +14,7 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_URL"),
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
   );
+  console.log("supabaseClient created");
   const { data: orders, error } = await supabaseClient
     .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
     .select("*")
@@ -34,6 +39,7 @@ Deno.serve(async (req) => {
       subject: "Your Order is Pending",
       html: `<p>Dear Customer,</p><p>Your order with ID <strong>${order.id}</strong> is currently pending. Please check your account for more details.</p>`,
     };
+    console.log("Sending email to:", order.customer_email);
     const response = await fetch(resendUrl, {
       method: "POST",
       headers: {
@@ -42,6 +48,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify(emailData),
     });
+    console.log("Email sent to:", order.customer_email);
     if (!response.ok) {
       const errorResponse = await response.json();
       console.error("Error sending email:", errorResponse);
