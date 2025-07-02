@@ -3,6 +3,43 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 console.log("Sending Pending Orders Emails function starting...");
 
+// Utility function to delay execution
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Utility function to retry with exponential backoff
+const retryWithBackoff = async (
+  fn: () => Promise<any>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<any> => {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt === maxRetries) {
+        throw error;
+      }
+
+      // Check if it's a rate limit error
+      const isRateLimit =
+        error.message?.includes("Too many requests") ||
+        error.message?.includes("rate limit");
+
+      if (isRateLimit) {
+        const delayMs = baseDelay * Math.pow(2, attempt); // Exponential backoff
+        console.log(
+          `Rate limit hit, retrying in ${delayMs}ms (attempt ${attempt + 1}/${
+            maxRetries + 1
+          })`
+        );
+        await delay(delayMs);
+      } else {
+        throw error; // Re-throw non-rate-limit errors immediately
+      }
+    }
+  }
+};
+
 const sendPendingOrdersEmails = async (order: any) => {
   const {
     id,
@@ -70,24 +107,71 @@ const sendPendingOrdersEmails = async (order: any) => {
 
   console.log("Sending email to:", email);
 
-  const response = await fetch(resendUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(emailData),
+  // Use retry logic for sending email
+  const response = await retryWithBackoff(async () => {
+    const res = await fetch(resendUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(emailData),
+    });
+
+    if (!res.ok) {
+      const errorResponse = await res.json();
+      throw new Error(`Failed to send email: ${errorResponse.message}`);
+    }
+
+    return res;
   });
 
-  console.log("Email sent to:", email);
+  console.log("Email sent successfully to:", email);
+  return response;
+};
 
-  if (!response.ok) {
-    const errorResponse = await response.json();
-    console.error("Error sending email:", errorResponse);
-    throw new Error(`Failed to send email: ${errorResponse.message}`);
+// Batch processing function to handle rate limits
+const processBatchWithRateLimit = async (
+  orders: any[],
+  batchSize: number = 2,
+  delayBetweenBatches: number = 1000
+) => {
+  const emailResults = [];
+
+  for (let i = 0; i < orders.length; i += batchSize) {
+    const batch = orders.slice(i, i + batchSize);
+    console.log(
+      `Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(
+        orders.length / batchSize
+      )}`
+    );
+
+    // Process batch in parallel
+    const batchPromises = batch.map(async (order) => {
+      try {
+        await sendPendingOrdersEmails(order);
+        return { orderId: order.id, status: "sent" };
+      } catch (error) {
+        console.error(`Failed to send email for order ${order.id}:`, error);
+        return {
+          orderId: order.id,
+          status: "failed",
+          error: error.message,
+        };
+      }
+    });
+
+    const batchResults = await Promise.all(batchPromises);
+    emailResults.push(...batchResults);
+
+    // Add delay between batches to respect rate limits
+    if (i + batchSize < orders.length) {
+      console.log(`Waiting ${delayBetweenBatches}ms before next batch...`);
+      await delay(delayBetweenBatches);
+    }
   }
 
-  return response;
+  return emailResults;
 };
 
 Deno.serve(async (req) => {
@@ -125,28 +209,38 @@ Deno.serve(async (req) => {
     );
   }
 
-  const emailResults = [];
-
-  for (const order of orders) {
-    try {
-      console.log("Processing order:", order.id);
-      await sendPendingOrdersEmails(order);
-      emailResults.push({ orderId: order.id, status: "sent" });
-    } catch (error) {
-      console.error(`Failed to send email for order ${order.id}:`, error);
-      emailResults.push({
-        orderId: order.id,
-        status: "failed",
-        error: error.message,
-      });
-    }
+  if (orders.length === 0) {
+    return new Response(
+      JSON.stringify({
+        message: "No pending orders found",
+        totalOrders: 0,
+      }),
+      {
+        status: 200,
+      }
+    );
   }
+
+  console.log(`Found ${orders.length} pending orders to process`);
+
+  // Process emails with rate limiting
+  const emailResults = await processBatchWithRateLimit(
+    orders,
+    2, // Batch size: 2 emails per batch (respects 2 requests/second limit)
+    1000 // 1 second delay between batches
+  );
+
+  const successCount = emailResults.filter((r) => r.status === "sent").length;
+  const failureCount = emailResults.filter((r) => r.status === "failed").length;
 
   return new Response(
     JSON.stringify({
       message: "Email processing completed!",
       results: emailResults,
       totalOrders: orders.length,
+      successCount,
+      failureCount,
+      summary: `${successCount} sent, ${failureCount} failed`,
     }),
     {
       status: 200,
