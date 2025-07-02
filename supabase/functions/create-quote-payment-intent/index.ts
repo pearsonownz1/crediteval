@@ -82,7 +82,7 @@ serve(async (req) => {
 
     // --- Check if Quote Exists and Get Details (Recommended) ---
     const { data: quoteData, error: quoteError } = await supabaseAdmin
-      .from("quotes")
+      .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
       .select("price, status, email, first_name, last_name") // Select relevant fields
       .eq("id", quoteId)
       .single();
@@ -137,7 +137,7 @@ serve(async (req) => {
 
     // Update the quote with the payment intent ID
     const { error: updateError } = await supabaseAdmin
-      .from("quotes")
+      .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
       .update({
         stripe_payment_intent_id: paymentIntent.id,
         status: "pending_payment", // Set status to pending payment
