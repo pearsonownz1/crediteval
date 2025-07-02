@@ -155,7 +155,7 @@ const sendPendingOrdersEmails = async (order: any) => {
       <li>Special Instructions: ${services?.specialInstructions || "None"}</li>
     </ul>
     ${
-      services?.shippingInfo
+      services?.deliveryType && services?.deliveryType !== "email"
         ? `
       <p><strong>Shipping Information:</strong></p>
       <p>${services.shippingInfo.address}, ${services.shippingInfo.city}, ${services.shippingInfo.state}, ${services.shippingInfo.zip}, ${services.shippingInfo.country}</p>
