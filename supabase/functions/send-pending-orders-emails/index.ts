@@ -173,7 +173,7 @@ const sendPendingOrdersEmails = async (order: any) => {
   const emailData = {
     from: "noreply@mail.crediteval.com",
     to: email,
-    subject: "Your Pending Order Details",
+    subject: "Complete Your CreditEval Order - Don't Miss Out!",
     html: emailBody,
   };
 
