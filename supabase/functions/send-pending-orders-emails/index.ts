@@ -39,6 +39,7 @@ Deno.serve(async (req) => {
       subject: "Your Order is Pending",
       html: `<p>Dear Customer,</p><p>Your order with ID <strong>${order.id}</strong> is currently pending. Please check your account for more details.</p>`,
     };
+    console.log("order details", order);
     console.log("Sending email to:", order.customer_email);
     const response = await fetch(resendUrl, {
       method: "POST",
