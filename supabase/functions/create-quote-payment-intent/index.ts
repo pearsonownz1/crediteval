@@ -174,11 +174,12 @@ serve(async (req) => {
     }
 
     // Update the quote with the payment intent ID
+    // Keep status as "Pending" - it will be updated to "Paid" after successful payment
     const { error: updateError } = await supabaseAdmin
-      .from("quotes") // CHANGED: Use hardcoded "quotes" table name
+      .from("quotes")
       .update({
         stripe_payment_intent_id: paymentIntent.id,
-        status: "PAID", // Set status to pending payment
+        // Note: Not updating status here - it remains "Pending" until payment succeeds
       })
       .eq("id", quoteId);
 
@@ -193,7 +194,7 @@ serve(async (req) => {
     }
 
     console.log(
-      `Quote ${quoteId} updated with payment intent ${paymentIntent.id}`
+      `Quote ${quoteId} updated with payment intent ${paymentIntent.id} (status remains Pending)`
     );
 
     // Return the client secret

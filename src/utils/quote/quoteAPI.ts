@@ -29,67 +29,34 @@ export const callQuotePaymentIntent = async (
   quoteId: string,
   amount: number
 ) => {
-  const functionUrl = `${
-    import.meta.env.VITE_SUPABASE_URL
-  }/functions/v1/create-quote-payment-intent`;
-
   console.log("DEBUG: Calling payment intent function");
-  console.log("DEBUG: Function URL:", functionUrl);
-  console.log("DEBUG: Request payload:", { amount, quoteId, currency: "usd" });
-  console.log(
-    "DEBUG: Using API key:",
-    import.meta.env.VITE_SUPABASE_ANON_KEY ? "Present" : "Missing"
-  );
+  console.log("DEBUG: Quote ID:", quoteId);
+  console.log("DEBUG: Amount:", amount);
+
+  // Remove session check for anonymous quote payments
+  // Quote payments should work without user authentication
 
   try {
-    const response = await fetch(functionUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({
-        amount,
-        quoteId,
-        currency: "usd",
-      }),
-    });
-
-    console.log("DEBUG: Function response status:", response.status);
-    console.log(
-      "DEBUG: Function response headers:",
-      Object.fromEntries(response.headers.entries())
+    const { data, error } = await supabase.functions.invoke(
+      "create-quote-payment-intent",
+      {
+        body: {
+          amount,
+          quoteId,
+          currency: "usd",
+        },
+      }
     );
 
-    const responseText = await response.text();
-    console.log("DEBUG: Raw response text:", responseText);
+    console.log("DEBUG: Function invoke result:", { data, error });
 
-    let responseData;
-    try {
-      responseData = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error("DEBUG: Failed to parse response as JSON:", parseError);
-      throw new Error(`Invalid JSON response from function: ${responseText}`);
+    if (error) {
+      console.error("DEBUG: Supabase function error:", error);
+      throw new Error(error.message || "Failed to create payment intent");
     }
 
-    console.log("DEBUG: Parsed response data:", responseData);
-
-    if (!response.ok) {
-      console.error("DEBUG: Function returned error status:", response.status);
-      console.error("DEBUG: Error response body:", responseData);
-
-      const errorMessage =
-        responseData?.error ||
-        responseData?.message ||
-        `Function invocation failed with status ${response.status}`;
-
-      throw new Error(errorMessage);
-    }
-
-    // Return the response data
     return {
-      clientSecret: responseData.clientSecret || responseData.client_secret,
+      clientSecret: data?.clientSecret || data?.client_secret,
       error: null,
     };
   } catch (error: any) {
