@@ -171,7 +171,7 @@ const sendPendingOrdersEmails = async (order: any) => {
   const resendUrl = "https://api.resend.com/emails";
 
   const emailData = {
-    from: "CreditEval - Credential Evaluation & Translation Services <noreply@crediteval.com>",
+    from: "CreditEval - Credential Evaluation & Translation Services <noreply@mail.crediteval.com>",
     to: email,
     subject: "Complete Your CreditEval Order - Don't Miss Out!",
     html: emailBody,
