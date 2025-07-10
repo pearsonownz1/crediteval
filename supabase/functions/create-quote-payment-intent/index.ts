@@ -82,7 +82,7 @@ serve(async (req) => {
 
     // --- Check if Quote Exists and Get Details (Recommended) ---
     const { data: quoteData, error: quoteError } = await supabaseAdmin
-      .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
+      .from("quotes")
       .select("price, status, email, first_name, last_name") // Select relevant fields
       .eq("id", quoteId)
       .single();
