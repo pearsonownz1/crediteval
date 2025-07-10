@@ -1,5 +1,5 @@
 import { supabase } from "../../lib/supabaseClient";
-import { Quote } from "../../types/quote"; // Assuming you have a Quote type
+import { Quote } from "../../types/quote";
 
 export const getQuote = async (quoteId: string) => {
   const { data, error } = await supabase
@@ -11,7 +11,6 @@ export const getQuote = async (quoteId: string) => {
   if (error) {
     throw error;
   }
-
   return data;
 };
 
@@ -34,28 +33,72 @@ export const callQuotePaymentIntent = async (
     import.meta.env.VITE_SUPABASE_URL
   }/functions/v1/create-quote-payment-intent`;
 
-  const response = await fetch(functionUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify({
-      amount,
-      quoteId,
-      currency: "usd",
-    }),
-  });
+  console.log("DEBUG: Calling payment intent function");
+  console.log("DEBUG: Function URL:", functionUrl);
+  console.log("DEBUG: Request payload:", { amount, quoteId, currency: "usd" });
+  console.log(
+    "DEBUG: Using API key:",
+    import.meta.env.VITE_SUPABASE_ANON_KEY ? "Present" : "Missing"
+  );
 
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({
-      error: "Failed to parse error response",
-    }));
-    throw new Error(
-      errorBody.error ||
-        `Function invocation failed with status ${response.status}`
+  try {
+    const response = await fetch(functionUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        amount,
+        quoteId,
+        currency: "usd",
+      }),
+    });
+
+    console.log("DEBUG: Function response status:", response.status);
+    console.log(
+      "DEBUG: Function response headers:",
+      Object.fromEntries(response.headers.entries())
     );
-  }
 
-  return response.json();
+    const responseText = await response.text();
+    console.log("DEBUG: Raw response text:", responseText);
+
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error("DEBUG: Failed to parse response as JSON:", parseError);
+      throw new Error(`Invalid JSON response from function: ${responseText}`);
+    }
+
+    console.log("DEBUG: Parsed response data:", responseData);
+
+    if (!response.ok) {
+      console.error("DEBUG: Function returned error status:", response.status);
+      console.error("DEBUG: Error response body:", responseData);
+
+      const errorMessage =
+        responseData?.error ||
+        responseData?.message ||
+        `Function invocation failed with status ${response.status}`;
+
+      throw new Error(errorMessage);
+    }
+
+    // Return the response data
+    return {
+      clientSecret: responseData.clientSecret || responseData.client_secret,
+      error: null,
+    };
+  } catch (error: any) {
+    console.error("DEBUG: callQuotePaymentIntent error:", error);
+
+    // Return error in expected format
+    return {
+      clientSecret: null,
+      error: error.message || "Failed to create payment intent",
+    };
+  }
 };
