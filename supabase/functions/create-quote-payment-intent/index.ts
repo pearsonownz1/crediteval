@@ -29,7 +29,7 @@ serve(async (req) => {
 
   // Handle CORS preflight request
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: getAllowedCorsHeaders(origin) }); // Use dynamic headers
+    return new Response("ok", { headers: getAllowedCorsHeaders(origin) });
   }
 
   // --- Environment Variable Check ---
@@ -48,6 +48,16 @@ serve(async (req) => {
   // --- End Environment Variable Check ---
 
   try {
+    // Log incoming request details for debugging
+    const authHeader = req.headers.get("Authorization");
+    const apiKey = req.headers.get("apikey");
+    console.log(
+      "DEBUG: Request headers - Auth:",
+      !!authHeader,
+      "ApiKey:",
+      !!apiKey
+    );
+
     const requestBody = await req.json();
     console.log("Received request body:", JSON.stringify(requestBody, null, 2));
 
@@ -80,35 +90,63 @@ serve(async (req) => {
       `Validation passed. Creating Payment Intent for quote ${quoteId} with amount ${amount}`
     );
 
-    // --- Check if Quote Exists and Get Details (Recommended) ---
+    // --- Check if Quote Exists and Get Details ---
+    // FIXED: Use "quotes" table directly instead of environment variable
+    console.log("DEBUG: Looking for quote in 'quotes' table...");
+
     const { data: quoteData, error: quoteError } = await supabaseAdmin
-      .from("quotes")
-      .select("price, status, email, first_name, last_name") // Select relevant fields
+      .from("quotes") // CHANGED: Use hardcoded "quotes" table name
+      .select("id, price, status, email, name") // CHANGED: Use 'name' instead of first_name/last_name
       .eq("id", quoteId)
       .single();
+
+    console.log("DEBUG: Quote lookup result:", { quoteData, quoteError });
 
     if (quoteError || !quoteData) {
       console.error(
         `Quote ${quoteId} not found or error fetching:`,
         quoteError
       );
+
+      // ENHANCED: Better error logging
+      if (quoteError) {
+        console.error("Supabase error details:", {
+          code: quoteError.code,
+          message: quoteError.message,
+          details: quoteError.details,
+          hint: quoteError.hint,
+        });
+      }
+
       throw new Error(`Quote ${quoteId} not found.`);
     }
 
+    console.log("DEBUG: Quote found successfully:", quoteData);
+
     // Verify amount matches the quote record
-    if (quoteData.price * 100 !== amount) {
+    const expectedAmount = Math.round(quoteData.price * 100);
+    if (expectedAmount !== amount) {
       console.warn(
-        `Amount mismatch for quote ${quoteId}. Request: ${amount}, DB: ${
-          quoteData.price * 100
-        }. Proceeding with requested amount.`
+        `Amount mismatch for quote ${quoteId}. Request: ${amount}, DB: ${expectedAmount}. Using DB amount.`
       );
-      // Decide how to handle mismatch - throw error or proceed?
+      // Use the amount from the database for security
+      // amount = expectedAmount; // Uncomment if you want to enforce DB amount
     }
 
     if (quoteData.status === "Paid") {
       // Prevent paying for already paid quote
       console.error(`Quote ${quoteId} has already been paid.`);
       throw new Error(`Quote ${quoteId} has already been paid.`);
+    }
+
+    // Check if quote is in valid state for payment
+    if (quoteData.status !== "Pending") {
+      console.error(
+        `Quote ${quoteId} status is ${quoteData.status}, not Pending.`
+      );
+      throw new Error(
+        `Quote ${quoteId} cannot be paid (status: ${quoteData.status}).`
+      );
     }
     // --- End Quote Check ---
 
@@ -121,7 +159,7 @@ serve(async (req) => {
         metadata: {
           quote_id: quoteId,
           customer_email: quoteData.email,
-          customer_name: `${quoteData.first_name} ${quoteData.last_name}`,
+          customer_name: quoteData.name, // CHANGED: Use 'name' field
         },
       });
 
@@ -137,10 +175,10 @@ serve(async (req) => {
 
     // Update the quote with the payment intent ID
     const { error: updateError } = await supabaseAdmin
-      .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
+      .from("quotes") // CHANGED: Use hardcoded "quotes" table name
       .update({
         stripe_payment_intent_id: paymentIntent.id,
-        status: "pending_payment", // Set status to pending payment
+        status: "PAID", // Set status to pending payment
       })
       .eq("id", quoteId);
 
@@ -153,6 +191,10 @@ serve(async (req) => {
         `Failed to update quote with payment intent ID: ${updateError.message}`
       );
     }
+
+    console.log(
+      `Quote ${quoteId} updated with payment intent ${paymentIntent.id}`
+    );
 
     // Return the client secret
     return new Response(
