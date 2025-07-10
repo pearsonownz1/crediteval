@@ -76,7 +76,7 @@ serve(async (req) => {
         Authorization: `Bearer ${Deno.env.get("RESEND_API_KEY")}`,
       },
       body: JSON.stringify({
-        from: "CreditEval <no-reply@crediteval.com>",
+        from: "CreditEval <no-reply@mail.crediteval.com>",
         to: ["support@crediteval.com"],
         subject: emailSubject,
         html: emailBody.replace(/\n/g, "<br>"), // Convert newlines to HTML breaks
