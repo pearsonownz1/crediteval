@@ -28,6 +28,7 @@ import ImmigrationUseCase from "./components/use-cases/ImmigrationUseCase";
 import AcademicUseCase from "./components/use-cases/AcademicUseCase";
 import EmploymentUseCase from "./components/use-cases/EmploymentUseCase";
 import { QuotePaymentPage } from "./components/QuotePaymentPage"; // Import the new payment page
+import QuotePaymentSuccessPage from "./components/QuotePaymentSuccessPage";
 import { PaymentSuccessPage } from "./components/PaymentSuccessPage"; // Import the payment success page
 import { OrderProvider } from "./contexts/OrderContext"; // Import the OrderProvider
 import { QuoteDetailsPage } from "./pages/QuoteDetailsPage"; // Import QuoteDetailsPage
@@ -208,6 +209,7 @@ function App() {
             element={<PaymentSuccessPage />}
           />{" "}
           {/* Add quote payment success route */}
+          <Route path="/quote-success" element={<QuotePaymentSuccessPage />} />
           <Route
             path="/quote-payment/:quoteId"
             element={<QuotePaymentPage />}

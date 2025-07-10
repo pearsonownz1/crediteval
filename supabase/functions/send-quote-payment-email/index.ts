@@ -60,7 +60,7 @@ serve(async (req) => {
           ? `- Total Page: ${quote.services.total_page}`
           : ""
       }
-      - Amount Paid: $${(quote.price / 100).toFixed(2)}
+      - Amount Paid: $${quote.price.toFixed(2)}
       - Payment Intent ID: ${paymentIntentId}
       - Customer Email: ${quote.email || "N/A"}
       - Customer Name: ${quote.name || "N/A"}
