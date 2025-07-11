@@ -32,6 +32,7 @@ import QuotePaymentSuccessPage from "./components/QuotePaymentSuccessPage";
 import { PaymentSuccessPage } from "./components/PaymentSuccessPage"; // Import the payment success page
 import { OrderProvider } from "./contexts/OrderContext"; // Import the OrderProvider
 import { QuoteDetailsPage } from "./pages/QuoteDetailsPage"; // Import QuoteDetailsPage
+import { Toaster } from "@/components/ui/toaster"; // Import Toaster
 import routes from "tempo-routes";
 
 function App() {
@@ -242,6 +243,7 @@ function App() {
           </Route>
         </Routes>
         {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
+        <Toaster />
       </OrderProvider>{" "}
       {/* Close OrderProvider */}
     </Suspense>

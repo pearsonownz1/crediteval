@@ -67,7 +67,11 @@ export const QuoteDetails: React.FC = () => {
 
   const handleSavePrice = async () => {
     if (!id) {
-      alert("Quote ID is missing. Cannot save price.");
+      toast({
+        title: "Error",
+        description: "Quote ID is missing. Cannot save price.",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -77,9 +81,12 @@ export const QuoteDetails: React.FC = () => {
       if (!isNaN(parsedPrice) && parsedPrice >= 0) {
         priceToSave = parsedPrice;
       } else {
-        alert(
-          "Please enter a valid non-negative number for the price, or leave it empty."
-        );
+        toast({
+          title: "Error",
+          description:
+            "Please enter a valid non-negative number for the price, or leave it empty.",
+          variant: "destructive",
+        });
         return;
       }
     }
@@ -105,19 +112,31 @@ export const QuoteDetails: React.FC = () => {
       if (data && data.length > 0) {
         setQuote(data[0]);
         setIsEditingPrice(false);
-        alert("Price updated successfully!");
+        toast({
+          title: "Success",
+          description: "Price updated successfully!",
+          variant: "success",
+        });
       } else {
-        setError(
-          "No quote found with the provided ID to update. (This might happen if the ID is invalid or the row was deleted)"
-        );
-        alert(
-          "Error: No quote found with the provided ID to update. Please check the console for more details."
-        );
+        const errorMessage =
+          "No quote found with the provided ID to update. (This might happen if the ID is invalid or the row was deleted)";
+        setError(errorMessage);
+        toast({
+          title: "Error",
+          description:
+            "Error: No quote found with the provided ID to update. Please check the console for more details.",
+          variant: "destructive",
+        });
         console.error("Supabase update returned no data for ID:", id);
       }
     } catch (err: any) {
-      setError(err.message || "Failed to update price.");
-      alert(`Error updating price: ${err.message}`);
+      const errorMessage = err.message || "Failed to update price.";
+      setError(errorMessage);
+      toast({
+        title: "Error",
+        description: `Error updating price: ${errorMessage}`,
+        variant: "destructive",
+      });
       console.error("Error during Supabase update:", err);
     } finally {
       setLoading(false);
@@ -218,13 +237,15 @@ export const QuoteDetails: React.FC = () => {
               <Button onClick={handleEditPrice} size="sm" variant="outline">
                 Edit
               </Button>
-              {quote.price && quote.price > 0 && (
+              {quote.price && quote.price > 0 ? (
                 <Button
                   onClick={handleEmailClient}
                   size="sm"
                   disabled={isSendingEmail}>
                   {isSendingEmail ? "Sending..." : "Email Client"}
                 </Button>
+              ) : (
+                ""
               )}
             </div>
           )}
