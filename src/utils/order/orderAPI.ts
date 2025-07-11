@@ -152,8 +152,9 @@ export const createOrderFromQuote = async (
   quote: Quote,
   paymentIntentId: string
 ) => {
-  const [firstName, ...lastNameParts] = quote.name.split(" ");
-  const lastName = lastNameParts.join(" ");
+  const nameParts = quote.name.trim().split(" ");
+  const lastName = nameParts.length > 1 ? nameParts.pop() : "";
+  const firstName = nameParts.join(" ");
 
   const { data, error } = await supabase
     .from("orders")
@@ -163,7 +164,7 @@ export const createOrderFromQuote = async (
         last_name: lastName,
         email: quote.email,
         services: quote.services,
-        status: "pending_documents",
+        status: "paid",
         total_amount: quote.price,
         quote_id: quote.id,
         stripe_payment_intent_id: paymentIntentId,
