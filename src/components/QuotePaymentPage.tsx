@@ -25,6 +25,7 @@ import {
   callQuotePaymentIntent,
   updateQuoteStatus,
 } from "@/utils/quote/quoteAPI";
+import { createOrderFromQuote } from "@/utils/order/orderAPI";
 
 const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
 console.log(
@@ -109,6 +110,15 @@ function PaymentForm({
       if (paymentIntent?.status === "succeeded") {
         // Update quote status to 'Paid'
         await updateQuoteStatus(quote.id, "Paid");
+
+        // Create an order from the quote
+        try {
+          await createOrderFromQuote(quote, paymentIntent.id);
+          console.log("Order created successfully from quote.");
+        } catch (orderError) {
+          console.error("Failed to create order from quote:", orderError);
+          // Optional: handle this error, e.g., by showing a message to the user
+        }
 
         // Call the Supabase function to send email to support
         const { data, error: sendEmailError } = await supabase.functions.invoke(

@@ -1,5 +1,6 @@
 import { supabase } from "../../lib/supabaseClient";
 import { CustomerInfo } from "../../types/order/index"; // Corrected import path
+import { Quote } from "@/types/quote";
 
 export const createOrder = async (customerInfo: CustomerInfo) => {
   const { data, error } = await supabase
@@ -145,4 +146,37 @@ export const getOrder = async (orderId: string) => {
   }
 
   return data;
+};
+
+export const createOrderFromQuote = async (
+  quote: Quote,
+  paymentIntentId: string
+) => {
+  const [firstName, ...lastNameParts] = quote.name.split(" ");
+  const lastName = lastNameParts.join(" ");
+
+  const { data, error } = await supabase
+    .from("orders")
+    .insert([
+      {
+        first_name: firstName,
+        last_name: lastName,
+        email: quote.email,
+        services: quote.services,
+        status: "pending_documents",
+        total_amount: quote.price,
+        quote_id: quote.id,
+        stripe_payment_intent_id: paymentIntentId,
+        document_paths: quote.document_paths,
+      },
+    ])
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error("Error creating order from quote:", error);
+    throw error;
+  }
+
+  return data?.id?.toString();
 };
