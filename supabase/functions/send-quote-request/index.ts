@@ -11,7 +11,7 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const resendApiKey = Deno.env.get("RESEND_API_KEY");
 const adminEmail = Deno.env.get("ADMIN_EMAIL_ADDRESS"); // Keep for potential future use
-const fromEmail = Deno.env.get("FROM_EMAIL_ADDRESS");
+const fromEmail = "noreply@crediteval.com"; //Deno.env.get("FROM_EMAIL_ADDRESS");
 const klaviyoApiKey = Deno.env.get("KLAVIYO_PRIVATE_API_KEY"); // Added Klaviyo API Key
 
 // --- Initialize Clients ---
