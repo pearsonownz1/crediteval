@@ -17,12 +17,14 @@ interface DeliveryDetailsStepProps {
   data: ServiceInfo;
   updateData: (data: Partial<ServiceInfo>) => void;
   orderId: string | null; // Add orderId prop
+  orderEditToken: string | null;
 }
 
 export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
   data,
   updateData,
   orderId, // Destructure orderId
+  orderEditToken,
 }) => {
   // Defensive check: If data is null or undefined, return null or a loading indicator
   if (!data) {
@@ -47,8 +49,8 @@ export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
               deliveryType: value as ServiceInfo["deliveryType"],
             }; // Create updatedData
             updateData({ deliveryType: value as ServiceInfo["deliveryType"] });
-            if (orderId) {
-              updateOrderServices(orderId, updatedData) // Call updateOrderServices with updatedData
+            if (orderId && orderEditToken) {
+              updateOrderServices(orderId, updatedData, orderEditToken) // Call updateOrderServices with updatedData
                 .then(() => console.log("Order delivery type updated."))
                 .catch((err) =>
                   console.error("Failed to update order delivery type:", err)
@@ -87,8 +89,8 @@ export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
                   shippingInfo: updatedShippingInfo,
                 };
                 updateData({ shippingInfo: updatedShippingInfo });
-                if (orderId) {
-                  updateOrderServices(orderId, updatedData)
+                if (orderId && orderEditToken) {
+                  updateOrderServices(orderId, updatedData, orderEditToken)
                     .then(() => console.log("Order shipping country updated."))
                     .catch((err) =>
                       console.error(
@@ -128,8 +130,8 @@ export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
                   shippingInfo: updatedShippingInfo,
                 };
                 updateData({ shippingInfo: updatedShippingInfo });
-                if (orderId) {
-                  updateOrderServices(orderId, updatedData)
+                if (orderId && orderEditToken) {
+                  updateOrderServices(orderId, updatedData, orderEditToken)
                     .then(() => console.log("Order shipping address updated."))
                     .catch((err) =>
                       console.error(
@@ -161,8 +163,8 @@ export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
                   shippingInfo: updatedShippingInfo,
                 };
                 updateData({ shippingInfo: updatedShippingInfo });
-                if (orderId) {
-                  updateOrderServices(orderId, updatedData)
+                if (orderId && orderEditToken) {
+                  updateOrderServices(orderId, updatedData, orderEditToken)
                     .then(() =>
                       console.log("Order shipping apartment updated.")
                     )
@@ -194,8 +196,8 @@ export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
                     shippingInfo: updatedShippingInfo,
                   };
                   updateData({ shippingInfo: updatedShippingInfo });
-                  if (orderId) {
-                    updateOrderServices(orderId, updatedData)
+                  if (orderId && orderEditToken) {
+                    updateOrderServices(orderId, updatedData, orderEditToken)
                       .then(() => console.log("Order shipping city updated."))
                       .catch((err) =>
                         console.error(
@@ -224,8 +226,8 @@ export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
                     shippingInfo: updatedShippingInfo,
                   };
                   updateData({ shippingInfo: updatedShippingInfo });
-                  if (orderId) {
-                    updateOrderServices(orderId, updatedData)
+                  if (orderId && orderEditToken) {
+                    updateOrderServices(orderId, updatedData, orderEditToken)
                       .then(() => console.log("Order shipping state updated."))
                       .catch((err) =>
                         console.error(
@@ -254,8 +256,8 @@ export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
                     shippingInfo: updatedShippingInfo,
                   };
                   updateData({ shippingInfo: updatedShippingInfo });
-                  if (orderId) {
-                    updateOrderServices(orderId, updatedData)
+                  if (orderId && orderEditToken) {
+                    updateOrderServices(orderId, updatedData, orderEditToken)
                       .then(() => console.log("Order shipping zip updated."))
                       .catch((err) =>
                         console.error(

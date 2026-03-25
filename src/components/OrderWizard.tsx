@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { DocumentState, OrderData } from "../types/order-v1"; // Import types
+import type { OrderData as ModernOrderData } from "../types/order/index";
 import OrderSummarySidebar from "./OrderSummarySidebar"; // Import the new sidebar
 import { useOrderContext } from "../contexts/OrderContext"; // Import the context hook
 import EvalynAssistant from "./EvalynAssistant"; // Import the Evalyn component
@@ -1472,7 +1473,7 @@ const OrderWizard = ({
 }: OrderWizardProps) => {
   const [currentStep, setCurrentStep] = useState(initialStep);
   // const [orderId, setOrderId] = useState<string | null>(null); // Remove local state
-  const { orderId, setOrderId } = useOrderContext(); // Use context state
+  const { orderId, setOrderId, orderEditToken } = useOrderContext(); // Use context state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
@@ -2178,7 +2179,7 @@ const OrderWizard = ({
         {" "}
         {/* Removed mt-8 md:mt-0 */}
         {/* Order Summary Sidebar */}
-        <OrderSummarySidebar orderData={orderData} />
+        <OrderSummarySidebar orderData={orderData as unknown as ModernOrderData} />
         {/* Social Proof Section (Below Sidebar) */}
         <div className="mt-8">
           {" "}

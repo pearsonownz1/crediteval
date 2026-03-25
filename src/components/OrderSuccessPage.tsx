@@ -14,10 +14,12 @@ declare global {
 const OrderSuccessPage = () => {
   const [searchParams] = useSearchParams();
   const orderId = searchParams.get('orderId');
+  const mode = searchParams.get('mode');
+  const isTranslationSubmission = mode === 'request-submitted';
 
   // --- GA4 Purchase Event Tracking ---
   useEffect(() => {
-    if (orderId && typeof window.gtag === 'function') {
+    if (!isTranslationSubmission && orderId && typeof window.gtag === 'function') {
       console.log(`Order Success: Found orderId ${orderId}, attempting to fetch details for GA4.`);
 
       const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-order-details-for-ga?orderId=${orderId}`;
@@ -62,12 +64,12 @@ const OrderSuccessPage = () => {
         // Decide if you want to notify the user or just log the error
       });
 
-    } else if (!orderId) {
+    } else if (!isTranslationSubmission && !orderId) {
         console.warn("Order Success Page: No orderId found in URL for GA4 tracking.");
-    } else if (typeof window.gtag !== 'function') {
+    } else if (!isTranslationSubmission && typeof window.gtag !== 'function') {
         console.warn("Order Success Page: gtag function not found. GA4 event not fired.");
     }
-  }, [orderId]); // Re-run effect if orderId changes (shouldn't normally happen here)
+  }, [isTranslationSubmission, orderId]); // Re-run effect if orderId changes (shouldn't normally happen here)
   // --- End GA4 Tracking ---
 
   return (
@@ -77,9 +79,13 @@ const OrderSuccessPage = () => {
           <div className="mx-auto bg-green-100 rounded-full p-3 w-fit">
             <CheckCircle className="h-10 w-10 text-green-600" />
           </div>
-          <CardTitle className="text-2xl font-bold mt-4 text-primary">Order Confirmed!</CardTitle>
+          <CardTitle className="text-2xl font-bold mt-4 text-primary">
+            {isTranslationSubmission ? 'Request Submitted!' : 'Order Confirmed!'}
+          </CardTitle>
           <CardDescription className="text-muted-foreground">
-            Thank you for your purchase. Your order has been successfully placed.
+            {isTranslationSubmission
+              ? 'Thanks for submitting your certified translation request. We’ll prepare your free watermarked preview next.'
+              : 'Thank you for your purchase. Your order has been successfully placed.'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -89,8 +95,9 @@ const OrderSuccessPage = () => {
             </p>
           )}
           <p className="text-sm text-muted-foreground">
-            You will receive an email confirmation shortly with your order details.
-            If you have any questions, please contact our support team.
+            {isTranslationSubmission
+              ? 'You will receive an email confirmation shortly. Once your preview is ready, we’ll send you a watermarked version to review before any payment is required.'
+              : 'You will receive an email confirmation shortly with your order details. If you have any questions, please contact our support team.'}
           </p>
           <Button asChild>
             <Link to="/">Return to Homepage</Link>

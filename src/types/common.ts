@@ -1,5 +1,11 @@
 export type Status =
   | "pending"
+  | "submitted"
+  | "in_review"
+  | "in_translation"
+  | "preview_ready"
+  | "awaiting_payment"
+  | "paid"
   | "pending_payment"
   | "processing"
   | "in_progress"

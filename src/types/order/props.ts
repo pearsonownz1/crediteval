@@ -1,3 +1,5 @@
+import { DocumentState } from "./documents";
+
 export interface StepProps<T> {
   data: T;
   updateData: (data: Partial<T>) => void;

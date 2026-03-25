@@ -11,7 +11,7 @@ import { OrdersTable } from "./OrdersTable";
 import { OrderDetails } from "./OrderDetails";
 import { useOrders } from "../../../hooks/useOrders";
 import { useSelection } from "../../../hooks/useSelection";
-import { Order } from "../../../types/order-v1";
+import { Order } from "../../../types/order";
 
 export const OrdersView: React.FC = () => {
   const { orders, loading, error, deleteOrders, stats } = useOrders();

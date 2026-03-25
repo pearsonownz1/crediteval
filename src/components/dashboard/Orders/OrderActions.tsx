@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MessageSquare, Upload, MoreVertical } from "lucide-react";
-import { Order } from "../../../types/order-v1";
+import { Order } from "../../../types/order";
 
 interface OrderActionsProps {
   order: Order;

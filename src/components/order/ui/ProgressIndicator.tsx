@@ -1,14 +1,15 @@
 import React from "react";
 import { Progress } from "../../ui/progress";
 import { UserIcon, Globe, Truck, Check, DollarSign } from "lucide-react";
-import { STEP_TITLES, TOTAL_STEPS } from "../../../constants/order/steps";
+import { getStepTitles } from "../../../constants/order/steps";
 
 interface ProgressIndicatorProps {
   currentStep: number;
+  serviceType?: string;
 }
 
 // Define step configurations with icons in the component
-const getStepConfig = (index: number) => {
+const getStepConfig = (index: number, stepTitles: readonly string[]) => {
   const icons = [
     <UserIcon className="h-5 w-5" />,
     <Globe className="h-5 w-5" />,
@@ -18,22 +19,25 @@ const getStepConfig = (index: number) => {
   ];
 
   return {
-    title: STEP_TITLES[index],
+    title: stepTitles[index],
     icon: icons[index],
   };
 };
 
 export const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
   currentStep,
+  serviceType,
 }) => {
-  const progressPercentage = ((currentStep + 1) / TOTAL_STEPS) * 100;
+  const stepTitles = getStepTitles(serviceType);
+  const totalSteps = stepTitles.length;
+  const progressPercentage = ((currentStep + 1) / totalSteps) * 100;
 
   return (
     <div className="mt-4">
       <Progress value={progressPercentage} className="h-2" />
       <div className="flex justify-between mt-2">
-        {STEP_TITLES.map((_, index) => {
-          const stepConfig = getStepConfig(index);
+        {stepTitles.map((_, index) => {
+          const stepConfig = getStepConfig(index, stepTitles);
           return (
             <div
               key={index}

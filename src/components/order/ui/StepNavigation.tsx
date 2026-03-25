@@ -1,31 +1,35 @@
 import React from "react";
 import { Button } from "../../ui/button";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { TOTAL_STEPS } from "../../../constants/order/steps";
 
 interface StepNavigationProps {
   currentStep: number;
   onBack: () => void;
   onNext: () => void;
+  totalSteps: number;
   isSubmitting?: boolean;
   paymentProcessing?: boolean;
   isStripeReady?: boolean;
+  nextButtonText?: string;
 }
 
 export const StepNavigation: React.FC<StepNavigationProps> = ({
   currentStep,
   onBack,
   onNext,
+  totalSteps,
   isSubmitting = false,
   paymentProcessing = false,
   isStripeReady = true,
+  nextButtonText,
 }) => {
-  const isLastStep = currentStep === TOTAL_STEPS - 1;
+  const isLastStep = currentStep === totalSteps - 1;
   const isFirstStep = currentStep === 0;
 
   const getNextButtonText = () => {
     if (isSubmitting && isFirstStep) return "Saving...";
     if (paymentProcessing) return "Processing Payment...";
+    if (nextButtonText) return nextButtonText;
     if (isLastStep) return "Complete Order";
     return "Next";
   };

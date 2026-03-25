@@ -181,7 +181,7 @@ export const hasMinimalDataForEmail = (orderData: OrderData): boolean => {
     orderData.services?.urgency ||
     orderData.services?.deliveryMethod;
 
-  return hasCustomerData || hasServiceData;
+  return Boolean(hasCustomerData || hasServiceData);
 };
 
 /**

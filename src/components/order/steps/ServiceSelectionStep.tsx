@@ -25,12 +25,14 @@ interface ServiceSelectionStepProps {
   data: ServiceInfo;
   updateData: (data: Partial<ServiceInfo>) => void;
   orderId: string | null;
+  orderEditToken: string | null;
 }
 
 export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
   data,
   updateData,
   orderId,
+  orderEditToken,
 }) => {
   useEffect(() => {
     if (data.type) {
@@ -45,10 +47,11 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
         <Select
           value={data.type}
           onValueChange={(value) => {
-            const updatedData = { ...data, type: value };
-            updateData({ type: value });
-            if (orderId) {
-              updateOrderServices(orderId, updatedData)
+            const serviceType = value as ServiceInfo["type"];
+            const updatedData = { ...data, type: serviceType };
+            updateData({ type: serviceType });
+            if (orderId && orderEditToken) {
+              updateOrderServices(orderId, updatedData, orderEditToken)
                 .then(() =>
                   console.log("Order services updated (Service Type).")
                 )
@@ -80,7 +83,21 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
             <Label htmlFor="language-from">Language From</Label>
             <Select
               value={data.languageFrom}
-              onValueChange={(value) => updateData({ languageFrom: value })}>
+              onValueChange={(value) => {
+                updateData({ languageFrom: value });
+                if (orderId && orderEditToken) {
+                  updateOrderServices(
+                    orderId,
+                    { ...data, languageFrom: value },
+                    orderEditToken
+                  ).catch((err) =>
+                    console.error(
+                      "Failed to update order services (Language From):",
+                      err
+                    )
+                  );
+                }
+              }}>
               <SelectTrigger id="language-from">
                 <SelectValue placeholder="Select original language" />
               </SelectTrigger>
@@ -98,7 +115,21 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
             <Label htmlFor="language-to">Language To</Label>
             <Select
               value={data.languageTo}
-              onValueChange={(value) => updateData({ languageTo: value })}>
+              onValueChange={(value) => {
+                updateData({ languageTo: value });
+                if (orderId && orderEditToken) {
+                  updateOrderServices(
+                    orderId,
+                    { ...data, languageTo: value },
+                    orderEditToken
+                  ).catch((err) =>
+                    console.error(
+                      "Failed to update order services (Language To):",
+                      err
+                    )
+                  );
+                }
+              }}>
               <SelectTrigger id="language-to">
                 <SelectValue placeholder="Select target language" />
               </SelectTrigger>
@@ -124,7 +155,48 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
               }
               className="w-24"
             />
-            <p className="text-xs text-muted-foreground">($25 per page)</p>
+            <p className="text-xs text-muted-foreground">
+              Used to prepare your free watermarked preview and final unlock
+              pricing.
+            </p>
+          </div>
+
+          <div className="flex items-start space-x-2 rounded-lg border p-4">
+            <Checkbox
+              id="translation-notarization"
+              checked={data.notarizationRequested}
+              onCheckedChange={(checked) => {
+                const notarizationRequested = checked === true;
+                updateData({ notarizationRequested });
+                if (orderId && orderEditToken) {
+                  const updatedData = {
+                    ...data,
+                    notarizationRequested,
+                  };
+                  updateOrderServices(
+                    orderId,
+                    updatedData,
+                    orderEditToken
+                  ).catch((err) =>
+                    console.error(
+                      "Failed to update order services (Translation Notarization):",
+                      err
+                    )
+                  );
+                }
+              }}
+            />
+            <div className="space-y-1">
+              <Label
+                htmlFor="translation-notarization"
+                className="font-medium cursor-pointer">
+                Add notarization
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Request notarization now so our team can include it in your
+                final unlock quote if needed.
+              </p>
+            </div>
           </div>
         </>
       )}
@@ -142,13 +214,13 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
               }`}
               onClick={() => {
                 updateData({ evaluationType: "course" });
-                if (orderId) {
+                if (orderId && orderEditToken) {
                   const updatedData = { ...data, evaluationType: "course" };
                   console.log(
                     "ServiceSelectionStep: Sending updatedData to backend (Evaluation Type - Course):",
                     updatedData
                   ); // Debugging
-                  updateOrderServices(orderId, updatedData)
+                  updateOrderServices(orderId, updatedData, orderEditToken)
                     .then(() =>
                       console.log(
                         "Order services updated (Evaluation Type - Course)."
@@ -168,13 +240,13 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
                   checked={data.evaluationType === "course"}
                   onCheckedChange={() => {
                     updateData({ evaluationType: "course" });
-                    if (orderId) {
+                    if (orderId && orderEditToken) {
                       const updatedData = { ...data, evaluationType: "course" };
                       console.log(
                         "ServiceSelectionStep: Sending updatedData to backend (Evaluation Type - Course - Checkbox):",
                         updatedData
                       ); // Debugging
-                      updateOrderServices(orderId, updatedData)
+                      updateOrderServices(orderId, updatedData, orderEditToken)
                         .then(() =>
                           console.log(
                             "Order services updated (Evaluation Type - Course - Checkbox)."
@@ -221,13 +293,13 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
               }`}
               onClick={() => {
                 updateData({ evaluationType: "document" });
-                if (orderId) {
+                if (orderId && orderEditToken) {
                   const updatedData = { ...data, evaluationType: "document" };
                   console.log(
                     "ServiceSelectionStep: Sending updatedData to backend (Evaluation Type - Document):",
                     updatedData
                   ); // Debugging
-                  updateOrderServices(orderId, updatedData)
+                  updateOrderServices(orderId, updatedData, orderEditToken)
                     .then(() =>
                       console.log(
                         "Order services updated (Evaluation Type - Document)."
@@ -247,7 +319,7 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
                   checked={data.evaluationType === "document"}
                   onCheckedChange={() => {
                     updateData({ evaluationType: "document" });
-                    if (orderId) {
+                    if (orderId && orderEditToken) {
                       const updatedData = {
                         ...data,
                         evaluationType: "document",
@@ -256,7 +328,7 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
                         "ServiceSelectionStep: Sending updatedData to backend (Evaluation Type - Document - Checkbox):",
                         updatedData
                       ); // Debugging
-                      updateOrderServices(orderId, updatedData)
+                      updateOrderServices(orderId, updatedData, orderEditToken)
                         .then(() =>
                           console.log(
                             "Order services updated (Evaluation Type - Document - Checkbox)."
@@ -307,9 +379,9 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
             onValueChange={(value) => {
               const updatedData = { ...data, visaType: value };
               updateData({ visaType: value });
-              if (orderId && updatedData.type === "expert") {
+              if (orderId && orderEditToken && updatedData.type === "expert") {
                 // Only update if service type is expert
-                updateOrderServices(orderId, updatedData)
+                updateOrderServices(orderId, updatedData, orderEditToken)
                   .then(() =>
                     console.log("Order services updated (Visa Type).")
                   )
@@ -346,12 +418,12 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
               urgency: value as ServiceInfo["urgency"],
             }; // Create updatedData
             updateData({ urgency: value as ServiceInfo["urgency"] });
-            if (orderId) {
+            if (orderId && orderEditToken) {
               console.log(
                 "ServiceSelectionStep: Sending updatedData to backend (Urgency):",
                 updatedData
               ); // Debugging
-              updateOrderServices(orderId, updatedData) // Call updateOrderServices with updatedData
+              updateOrderServices(orderId, updatedData, orderEditToken) // Call updateOrderServices with updatedData
                 .then(() => console.log("Order urgency updated via services."))
                 .catch((err) =>
                   console.error(
@@ -388,12 +460,12 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
               specialInstructions: e.target.value,
             };
             updateData({ specialInstructions: e.target.value });
-            if (orderId) {
+            if (orderId && orderEditToken) {
               console.log(
                 "ServiceSelectionStep: Sending updatedData to backend (Special Instructions):",
                 updatedData
               );
-              updateOrderServices(orderId, updatedData)
+              updateOrderServices(orderId, updatedData, orderEditToken)
                 .then(() =>
                   console.log(
                     "Order special instructions updated via services."

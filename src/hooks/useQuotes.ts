@@ -16,7 +16,7 @@ export const useQuotes = () => {
       const { data, error: fetchError } = await supabase
         .from("quotes")
         .select(
-          "id, name, email, service_type, price, status, created_at, expires_at, staff_id"
+          "id, name, email, service_type, services, price, status, created_at, expires_at, staff_id"
         )
         .order("created_at", { ascending: false });
 

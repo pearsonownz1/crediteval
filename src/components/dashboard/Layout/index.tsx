@@ -1,10 +1,8 @@
-import React, { ReactNode, useState } from "react";
+import React, { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../lib/supabaseClient";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
-
-type ActiveView = "orders" | "quotes" | "clients" | "settings" | "create-quote";
 
 interface DashboardLayoutProps {
   children: ReactNode;

@@ -21,6 +21,7 @@ export const usePaymentProcessing = () => {
   const processPayment = async (
     orderData: OrderData,
     orderId: string,
+    orderEditToken: string,
     onComplete: (data: any) => void
   ) => {
     if (!stripe || !elements) {
@@ -40,7 +41,12 @@ export const usePaymentProcessing = () => {
 
     try {
       // Update order with final details
-      await updateOrderWithServices(orderId, orderData.services);
+      await updateOrderWithServices(
+        orderId,
+        orderData.services,
+        orderEditToken,
+        "pending_payment"
+      );
 
       // Create payment intent
       const calculatedAmount = Math.round(

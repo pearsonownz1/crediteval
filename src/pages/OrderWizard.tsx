@@ -43,7 +43,8 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
   const [currentStep, setCurrentStep] = useState(initialStep);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { orderId, setOrderId } = useOrderContext();
+  const { orderId, setOrderId, orderEditToken, setOrderEditToken } =
+    useOrderContext();
   const { orderData, updateOrderData, updateDocuments } = useOrderData();
   const { paymentProcessing, error, setError, processPayment, isStripeReady } =
     usePaymentProcessing();
@@ -62,9 +63,12 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
 
       setIsSubmitting(true);
       try {
-        const newOrderId = await createOrder(orderData.customerInfo);
+        const { orderId: newOrderId, editToken } = await createOrder(
+          orderData.customerInfo
+        );
         if (newOrderId) {
           setOrderId(newOrderId);
+          setOrderEditToken(editToken);
 
           // Track checkout started with Klaviyo
           const calculatedPrice = calculatePrice(orderData.services); // Calculate price
@@ -85,7 +89,18 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
     }
     // Final Step: Payment Processing
     else if (currentStep === TOTAL_STEPS - 1) {
-      const success = await processPayment(orderData, orderId!, onComplete);
+      if (!orderEditToken) {
+        setError(
+          "Your secure editing session expired. Please restart your order."
+        );
+        return;
+      }
+      const success = await processPayment(
+        orderData,
+        orderId!,
+        orderEditToken,
+        onComplete
+      );
       if (!success) {
         // Error handling is done within processPayment
         return;
@@ -111,6 +126,7 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
             data={orderData.customerInfo}
             updateData={(data) => updateOrderData("customerInfo", data)}
             error={error}
+            documents={orderData.documents}
           />
         );
       case 1:
@@ -121,6 +137,7 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
             documents={orderData.documents}
             updateDocuments={updateDocuments}
             orderId={orderId}
+            orderEditToken={orderEditToken}
           />
         );
       case 2:
@@ -128,6 +145,8 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
           <DeliveryDetailsStep
             data={orderData.services}
             updateData={(data) => updateOrderData("services", data)}
+            orderId={orderId}
+            orderEditToken={orderEditToken}
           />
         );
       case 3:
@@ -173,6 +192,7 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
               currentStep={currentStep}
               onBack={handleBack}
               onNext={handleNext}
+              totalSteps={TOTAL_STEPS}
               isSubmitting={isSubmitting}
               paymentProcessing={paymentProcessing}
               isStripeReady={isStripeReady}

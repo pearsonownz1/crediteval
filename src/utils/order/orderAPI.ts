@@ -2,47 +2,16 @@ import { supabase } from "../../lib/supabaseClient";
 import { CustomerInfo } from "../../types/order/index"; // Corrected import path
 import { Quote } from "@/types/quote";
 
-export const createOrder = async (customerInfo: CustomerInfo) => {
-  const { data, error } = await supabase
-    .from("orders")
-    .insert([
-      {
-        first_name: customerInfo.firstName,
-        last_name: customerInfo.lastName,
-        email: customerInfo.email,
-        phone: customerInfo.phone,
-      },
-    ])
-    .select("id")
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data?.id?.toString();
+type CreateOrderResult = {
+  orderId: string;
+  editToken: string;
 };
 
-export const updateOrderWithServices = async (
-  orderId: string,
-  services: any
-) => {
-  const { error } = await supabase
-    .from("orders")
-    .update({
-      services: services,
-      status: "pending_payment",
-    })
-    .eq("id", orderId);
+const generateOrderEditToken = () =>
+  `${crypto.randomUUID()}-${crypto.randomUUID()}`;
 
-  if (error) {
-    throw new Error(`Failed to update order details: ${error.message}`);
-  }
-};
-
-export const updateOrderServices = async (
-  orderId: string,
-  services: any // Consider defining a more specific type for services if available
+const invokeOrderServicesFunction = async (
+  payload: Record<string, unknown>
 ) => {
   const functionUrl = `${
     import.meta.env.VITE_SUPABASE_URL
@@ -54,10 +23,7 @@ export const updateOrderServices = async (
       "Content-Type": "application/json",
       apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
     },
-    body: JSON.stringify({
-      orderId,
-      services,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -71,6 +37,64 @@ export const updateOrderServices = async (
   }
 
   return response.json();
+};
+
+export const createOrder = async (customerInfo: CustomerInfo) => {
+  const editToken = generateOrderEditToken();
+  const { data, error } = await supabase
+    .from("orders")
+    .insert([
+      {
+        first_name: customerInfo.firstName,
+        last_name: customerInfo.lastName,
+        email: customerInfo.email,
+        phone: customerInfo.phone,
+        status: "pending",
+        services: {
+          _meta: {
+            editToken,
+          },
+        },
+      },
+    ])
+    .select("id")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    orderId: data?.id?.toString(),
+    editToken,
+  } as CreateOrderResult;
+};
+
+export const updateOrderWithServices = async (
+  orderId: string,
+  services: any,
+  editToken: string,
+  status: string
+) => {
+  return invokeOrderServicesFunction({
+    orderId,
+    services,
+    editToken,
+    status,
+    finalizeSubmission: true,
+  });
+};
+
+export const updateOrderServices = async (
+  orderId: string,
+  services: any,
+  editToken: string
+) => {
+  return invokeOrderServicesFunction({
+    orderId,
+    services,
+    editToken,
+  });
 };
 
 export const callPaymentIntent = async (

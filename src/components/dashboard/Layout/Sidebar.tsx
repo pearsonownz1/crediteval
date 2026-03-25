@@ -13,8 +13,8 @@ import {
 type ActiveView = "orders" | "quotes" | "clients" | "settings" | "create-quote";
 
 interface SidebarProps {
-  activeView: ActiveView;
-  setActiveView: (view: ActiveView) => void;
+  activeView?: ActiveView;
+  setActiveView?: (view: ActiveView) => void;
   onLogout: () => void;
 }
 

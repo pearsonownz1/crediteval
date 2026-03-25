@@ -43,19 +43,25 @@ const OrderSummarySidebar: React.FC<OrderSummarySidebarProps> = ({
   const urgency = getUrgencyText(orderData);
   const { type, pageCount, evaluationType, languageFrom, languageTo } =
     orderData.services;
+  const isTranslation = type === "translation";
 
   // Determine line items based on service type
   const getLineItems = () => {
     let items = [];
     if (type === "translation") {
       items.push({
-        name: "Certified Translation",
+        name: "Free Watermarked Preview",
         quantity: `${pageCount || 1} page(s)`,
-        price: (pageCount || 1) * 25,
+        price: 0,
       });
       items.push({
         name: `Languages`,
         quantity: `${languageFrom} to ${languageTo}`,
+        price: null,
+      });
+      items.push({
+        name: "Final Unlock",
+        quantity: "Quoted after preview",
         price: null,
       });
     } else if (type === "evaluation") {
@@ -169,14 +175,16 @@ const OrderSummarySidebar: React.FC<OrderSummarySidebarProps> = ({
         <hr />
 
         <div className="flex justify-between font-semibold">
-          <span>Total</span>
+          <span>{isTranslation ? "Today's Total" : "Total"}</span>
           <span className="text-primary">
-            ${calculatedPrice.toFixed(2)}
+            {isTranslation ? "$0.00" : `$${calculatedPrice.toFixed(2)}`}
           </span>{" "}
           {/* Added text-primary */}
         </div>
         <p className="text-xs text-muted-foreground mt-1 text-center">
-          Final price may vary based on document review.
+          {isTranslation
+            ? "Submit for free. You’ll receive a watermarked preview before choosing whether to pay for the final clean version."
+            : "Final price may vary based on document review."}
         </p>
       </CardContent>
     </Card>

@@ -40,7 +40,9 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ orderData }) => {
       <div>
         <h3 className="text-lg font-medium">Order Summary</h3>
         <p className="text-sm text-muted-foreground">
-          Please review your order details before proceeding to payment
+          {orderData.services.type === "translation"
+            ? "Please review your translation request before we prepare your free watermarked preview."
+            : "Please review your order details before proceeding to payment"}
         </p>
       </div>
 
@@ -80,8 +82,9 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ orderData }) => {
             {/* Service Benefit Text */}
             {orderData.services.type === "translation" && (
               <p className="text-sm text-muted-foreground mt-1">
-                You'll receive a certified translation suitable for official
-                use.
+                You’ll receive a free watermarked certified translation preview
+                first. You can unlock the final non-watermarked document after
+                review.
               </p>
             )}
             {orderData.services.type === "evaluation" && (
@@ -108,6 +111,10 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ orderData }) => {
                 </p>
                 <p className="text-sm">
                   Pages for Translation: {orderData.services.pageCount || 1}
+                </p>
+                <p className="text-sm">
+                  Notarization:{" "}
+                  {orderData.services.notarizationRequested ? "Requested" : "Not requested"}
                 </p>
               </>
             )}
@@ -170,12 +177,21 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ orderData }) => {
 
         <div className="border-t pt-4">
           <div className="flex justify-between">
-            <span className="font-medium">Estimated Total:</span>
-            <span className="font-bold">${calculatedPrice.toFixed(2)}</span>
+            <span className="font-medium">
+              {orderData.services.type === "translation"
+                ? "Unlock Price After Preview:"
+                : "Estimated Total:"}
+            </span>
+            <span className="font-bold">
+              {orderData.services.type === "translation"
+                ? "Quoted after preview preparation"
+                : `$${calculatedPrice.toFixed(2)}`}
+            </span>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Final price may vary based on document complexity and additional
-            requirements
+            {orderData.services.type === "translation"
+              ? "Submit now for free. We’ll send a watermarked preview first, then offer a paid unlock for the final clean document."
+              : "Final price may vary based on document complexity and additional requirements"}
           </p>
         </div>
       </div>

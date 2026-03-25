@@ -14,7 +14,12 @@ export const initialOrderData: OrderData = {
     // type will be undefined initially, as it's optional in ServiceInfo
     pageCount: 1, // Keep pageCount as it has a default value
     urgency: "standard", // Keep urgency as it has a default value
+    notarizationRequested: false,
     deliveryType: "email", // Keep deliveryType as it has a default value
+    previewStatus: "not_ready",
+    unlockStatus: "not_available",
+    translatorStatus: "unassigned",
+    deliveryConfirmationStatus: "pending",
     shippingInfo: {
       country: "",
       address: "",

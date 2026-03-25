@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   Table,
   TableBody,
@@ -15,7 +15,7 @@ import { StatusBadge } from "../../common/StatusBadge";
 import { DocumentLinks } from "../../common/DocumentLinks";
 import { OrderActions } from "./OrderActions";
 import { formatStatus } from "../../../utils/format";
-import { Order } from "../../../types/order-v1";
+import { Order } from "../../../types/order";
 import { Search, Filter, Trash2 } from "lucide-react";
 
 interface OrdersTableProps {

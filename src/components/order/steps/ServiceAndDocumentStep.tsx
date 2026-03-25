@@ -12,6 +12,7 @@ interface ServiceAndDocumentStepProps {
     updater: DocumentState[] | ((prevDocs: DocumentState[]) => DocumentState[])
   ) => void;
   orderId: string | null;
+  orderEditToken: string | null;
 }
 
 export const ServiceAndDocumentStep: React.FC<ServiceAndDocumentStepProps> = ({
@@ -20,6 +21,7 @@ export const ServiceAndDocumentStep: React.FC<ServiceAndDocumentStepProps> = ({
   documents,
   updateDocuments,
   orderId,
+  orderEditToken,
 }) => {
   return (
     <TooltipProvider>
@@ -28,6 +30,7 @@ export const ServiceAndDocumentStep: React.FC<ServiceAndDocumentStepProps> = ({
           data={serviceData}
           updateData={updateServiceData}
           orderId={orderId} // Pass orderId here
+          orderEditToken={orderEditToken}
         />
 
         <hr className="my-6" />

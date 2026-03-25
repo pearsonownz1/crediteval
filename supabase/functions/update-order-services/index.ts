@@ -34,7 +34,8 @@ serve(async (req) => {
   }
 
   try {
-    const { orderId, services } = await req.json();
+    const { orderId, services, editToken, finalizeSubmission, status } =
+      await req.json();
 
     if (!orderId || typeof orderId !== "string") {
       throw new Error("Invalid or missing orderId provided.");
@@ -42,12 +43,57 @@ serve(async (req) => {
     if (!services || typeof services !== "object") {
       throw new Error("Invalid or missing services data provided.");
     }
+    if (!editToken || typeof editToken !== "string") {
+      throw new Error("Invalid or missing editToken provided.");
+    }
+    if (finalizeSubmission && (!status || typeof status !== "string")) {
+      throw new Error("Invalid or missing status provided.");
+    }
 
     console.log(`Processing request to update services for order ${orderId}`);
 
+    const { data: existingOrder, error: fetchError } = await supabaseAdmin
+      .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
+      .select("services")
+      .eq("id", orderId)
+      .single();
+
+    if (fetchError || !existingOrder) {
+      throw new Error("Order not found.");
+    }
+
+    const existingServices =
+      existingOrder.services && typeof existingOrder.services === "object"
+        ? (existingOrder.services as Record<string, unknown>)
+        : {};
+    const existingMeta =
+      typeof existingServices._meta === "object" && existingServices._meta
+        ? (existingServices._meta as Record<string, unknown>)
+        : null;
+
+    if (!existingMeta || existingMeta.editToken !== editToken) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized order update." }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 403,
+        }
+      );
+    }
+
+    const updatePayload: Record<string, unknown> = {
+      services: {
+        ...services,
+        _meta: existingMeta,
+      },
+    };
+    if (finalizeSubmission) {
+      updatePayload.status = status;
+    }
+
     const { error: updateError } = await supabaseAdmin
       .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
-      .update({ services: services })
+      .update(updatePayload)
       .eq("id", orderId);
 
     if (updateError) {

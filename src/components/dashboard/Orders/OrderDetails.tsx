@@ -2,7 +2,7 @@ import React from "react";
 import { DialogWrapper } from "../../common/DialogWrapper";
 import { DocumentLinks } from "../../common/DocumentLinks";
 import { formatStatus, formatServiceType } from "../../../utils/format";
-import { Order } from "../../../types/order-v1";
+import { Order } from "../../../types/order";
 
 interface OrderDetailsProps {
   order: Order | null;
