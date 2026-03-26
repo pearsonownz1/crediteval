@@ -15,6 +15,7 @@ const stripeWebhookSigningSecret = Deno.env.get(
 );
 const posthogApiKey = Deno.env.get("POSTHOG_API_KEY"); // Get PostHog API Key
 const posthogHost = Deno.env.get("POSTHOG_HOST") || "https://us.i.posthog.com"; // Get PostHog Host or default
+const ordersTable = Deno.env.get("VITE_SUPABASE_ORDERS_TABLE") || "orders";
 
 // Initialize Stripe and Supabase clients
 const stripe = stripeSecretKey
@@ -134,7 +135,7 @@ serve(async (req) => {
         // 3. Insert the new order
         const { data: orderInsertResult, error: orderInsertError } =
           await supabaseAdmin
-            .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
+            .from(ordersTable)
             .insert(newOrderData)
             .select("id") // Select the new order ID
             .single();

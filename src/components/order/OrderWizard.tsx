@@ -15,7 +15,6 @@ import OrderSummarySidebar from "../OrderSummarySidebar";
 
 // Hooks
 import { useOrderData, initialOrderData } from "./hooks/useOrderData";
-import { usePaymentProcessing } from "./hooks/usePaymentProcessing";
 import { useOrderValidation } from "./hooks/useOrderValidation";
 import { useAbandonedCartTracking } from "./hooks/useAbandonedCartTracking";
 
@@ -29,7 +28,6 @@ import { CustomerInfoStep } from "./steps/CustomerInfoStep";
 import { ServiceAndDocumentStep } from "./steps/ServiceAndDocumentStep";
 import { DeliveryDetailsStep } from "./steps/DeliveryDetailsStep";
 import { ReviewStep } from "./steps/ReviewStep";
-import { PaymentStep } from "./steps/PaymentStep";
 
 // Utils and Constants
 import {
@@ -39,7 +37,6 @@ import {
 } from "../../utils/order/orderAPI";
 import {
   trackCheckoutStarted,
-  trackAddPaymentInfo,
 } from "../../utils/analytics";
 import { calculatePrice } from "../../utils/order/priceCalculation";
 import { getStepTitles } from "../../constants/order/steps";
@@ -61,8 +58,7 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
   useEffect(() => {
     orderDataRef.current = orderData; // Keep the ref updated
   }, [orderData]);
-  const { paymentProcessing, error, setError, processPayment, isStripeReady } =
-    usePaymentProcessing();
+  const [error, setError] = useState<string | null>(null);
   const isTranslationFlow = orderData.services.type === "translation";
   const stepTitles = getStepTitles(orderData.services.type);
   const totalSteps = stepTitles.length;
@@ -358,10 +354,10 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
         markAsActive(orderData);
       }
     }
-    // Final Step: Payment Processing
+    // Final Step: Submit request (payment happens later after preview)
     else if (currentStep === totalSteps - 1) {
       console.log(
-        "OrderWizard: handleNext - currentStep is final step. Processing payment."
+        "OrderWizard: handleNext - currentStep is final step. Submitting request."
       );
       if (!orderEditToken) {
         setError(
@@ -369,44 +365,28 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
         );
         return;
       }
-      if (isTranslationFlow) {
-        try {
-          await updateOrderWithServices(
-            orderId!,
-            {
-              ...orderData.services,
-              previewStatus: "not_ready",
-              unlockStatus: "not_available",
-              translatorStatus: "unassigned",
-            },
-            orderEditToken!,
-            "submitted"
-          );
-          stopTracking();
-          navigate(`/order-success?orderId=${orderId}&mode=request-submitted`);
-          return;
-        } catch (err: any) {
-          console.error("OrderWizard: Error submitting translation order:", err);
-          setError(
-            err.message || "Failed to submit translation request. Please try again."
-          );
-          return;
-        }
-      }
-      const calculatedPrice = calculatePrice(orderData.services);
-      trackAddPaymentInfo(orderData, orderId!, calculatedPrice);
-
-      const success = await processPayment(
-        orderData,
-        orderId!,
-        orderEditToken,
-        onComplete
-      );
-      if (success) {
-        stopTracking();
-        console.log(
-          "OrderWizard: handleNext - Payment successful, tracking stopped."
+      try {
+        await updateOrderWithServices(
+          orderId!,
+          isTranslationFlow
+            ? {
+                ...orderData.services,
+                previewStatus: "not_ready",
+                unlockStatus: "not_available",
+                translatorStatus: "unassigned",
+              }
+            : orderData.services,
+          orderEditToken,
+          "submitted"
         );
+        stopTracking();
+        onComplete({ ...orderData, orderId });
+        navigate(`/order-success?orderId=${orderId}&mode=request-submitted`);
+        return;
+      } catch (err: any) {
+        console.error("OrderWizard: Error submitting order request:", err);
+        setError(err.message || "Failed to submit request. Please try again.");
+        return;
       }
     }
     // Other Steps: Just move forward
@@ -487,8 +467,6 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
         );
       case 3:
         return <ReviewStep orderData={orderData} />;
-      case 4:
-        return isTranslationFlow ? null : <PaymentStep error={error} />;
       default:
         return null;
     }
@@ -533,15 +511,9 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
               onNext={handleNext}
               totalSteps={totalSteps}
               isSubmitting={isSubmitting}
-              paymentProcessing={paymentProcessing}
-              isStripeReady={isTranslationFlow ? true : isStripeReady}
-              nextButtonText={
-                currentStep === totalSteps - 1
-                  ? isTranslationFlow
-                    ? "Submit Request"
-                    : undefined
-                  : undefined
-              }
+              paymentProcessing={false}
+              isStripeReady={true}
+              nextButtonText={currentStep === totalSteps - 1 ? "Submit Request" : undefined}
             />
           </CardFooter>
         </Card>

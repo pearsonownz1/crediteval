@@ -3,7 +3,6 @@ const DEFAULT_STEP_TITLES = [
   "Service & Docs",
   "Delivery",
   "Review",
-  "Payment",
 ] as const;
 
 const TRANSLATION_STEP_TITLES = [

@@ -1,4 +1,5 @@
 import { supabase } from "../../lib/supabaseClient";
+import { ordersTable } from "../../lib/ordersTable";
 import { CustomerInfo } from "../../types/order/index"; // Corrected import path
 import { Quote } from "@/types/quote";
 
@@ -40,11 +41,13 @@ const invokeOrderServicesFunction = async (
 };
 
 export const createOrder = async (customerInfo: CustomerInfo) => {
+  const orderId = crypto.randomUUID();
   const editToken = generateOrderEditToken();
-  const { data, error } = await supabase
-    .from("orders")
+  const { error } = await supabase
+    .from(ordersTable)
     .insert([
       {
+        id: orderId,
         first_name: customerInfo.firstName,
         last_name: customerInfo.lastName,
         email: customerInfo.email,
@@ -56,16 +59,14 @@ export const createOrder = async (customerInfo: CustomerInfo) => {
           },
         },
       },
-    ])
-    .select("id")
-    .single();
+    ]);
 
   if (error) {
     throw error;
   }
 
   return {
-    orderId: data?.id?.toString(),
+    orderId,
     editToken,
   } as CreateOrderResult;
 };
@@ -160,7 +161,7 @@ export const sendReceiptEmail = async (orderId: string) => {
 
 export const getOrder = async (orderId: string) => {
   const { data, error } = await supabase
-    .from("orders")
+    .from(ordersTable)
     .select("*")
     .eq("id", orderId)
     .single();
@@ -176,14 +177,16 @@ export const createOrderFromQuote = async (
   quote: Quote,
   paymentIntentId: string
 ) => {
+  const orderId = crypto.randomUUID();
   const nameParts = quote.name.trim().split(" ");
   const lastName = nameParts.length > 1 ? nameParts.pop() : "";
   const firstName = nameParts.join(" ");
 
-  const { data, error } = await supabase
-    .from("orders")
+  const { error } = await supabase
+    .from(ordersTable)
     .insert([
       {
+        id: orderId,
         first_name: firstName,
         last_name: lastName,
         email: quote.email,
@@ -194,14 +197,12 @@ export const createOrderFromQuote = async (
         stripe_payment_intent_id: paymentIntentId,
         document_paths: quote.document_paths,
       },
-    ])
-    .select("id")
-    .single();
+    ]);
 
   if (error) {
     console.error("Error creating order from quote:", error);
     throw error;
   }
 
-  return data?.id?.toString();
+  return orderId;
 };

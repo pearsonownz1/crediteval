@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { ordersTable } from "../lib/ordersTable";
 import { Order } from "../types/order";
 
 export const useOrders = () => {
@@ -12,7 +13,7 @@ export const useOrders = () => {
     setError(null);
     try {
       const { data, error: fetchError } = await supabase
-        .from("orders")
+        .from(ordersTable)
         .select("*")
         .order("created_at", { ascending: false });
 
@@ -46,7 +47,7 @@ export const useOrders = () => {
 
     try {
       const { error: deleteError } = await supabase
-        .from("orders")
+        .from(ordersTable)
         .delete()
         .in("id", ids);
 
@@ -68,7 +69,7 @@ export const useOrders = () => {
       .channel("orders-realtime")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "orders" },
+        { event: "*", schema: "public", table: ordersTable },
         () => {
           void fetchOrders();
         }

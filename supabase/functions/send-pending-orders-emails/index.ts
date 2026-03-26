@@ -1,6 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+const ordersTable = Deno.env.get("VITE_SUPABASE_ORDERS_TABLE") || "orders";
+
 console.log("Sending Pending Orders Emails function starting...");
 
 // Utility function to delay execution
@@ -265,7 +267,7 @@ Deno.serve(async (req) => {
   console.log("supabaseClient created");
 
   const { data: orders, error } = await supabaseClient
-    .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE")!)
+    .from(ordersTable)
     .select("*")
     .gt("created_at", new Date(Date.now() - 60 * 60 * 1000).toISOString()) // Orders created in the last hour
     .eq("status", "pending");

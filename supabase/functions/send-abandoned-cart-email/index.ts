@@ -20,6 +20,7 @@ let supabaseAdmin: SupabaseClient | null = null;
 if (supabaseUrl && supabaseServiceRoleKey) {
   supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 }
+const ordersTable = Deno.env.get("VITE_SUPABASE_ORDERS_TABLE") || "orders";
 
 let resend: Resend | null = null;
 if (resendApiKey) {
@@ -431,7 +432,7 @@ serve(async (req) => {
     // 1. Check if the order has already been paid or is pending payment
     if (orderData.orderId) {
       const { data: order, error: orderFetchError } = await supabaseAdmin
-        .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
+        .from(ordersTable)
         .select("status")
         .eq("id", orderData.orderId)
         .single();

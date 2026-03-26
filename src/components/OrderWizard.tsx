@@ -47,6 +47,7 @@ import {
   Truck as TruckIcon, // Added for Delivery Details
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import { ordersTable } from "../lib/ordersTable";
 import { DocumentState, OrderData } from "../types/order-v1"; // Import types
 import type { OrderData as ModernOrderData } from "../types/order/index";
 import OrderSummarySidebar from "./OrderSummarySidebar"; // Import the new sidebar
@@ -1592,7 +1593,7 @@ const OrderWizard = ({
       setIsSubmitting(true);
       try {
         const { data, error: insertError } = await supabase
-          .from("orders")
+          .from(ordersTable)
           .insert([
             {
               first_name: firstName,
@@ -1786,7 +1787,7 @@ const OrderWizard = ({
         ); // Log data being sent
         // Remove total_amount update from client-side - let the function handle it
         const { error: updateError } = await supabase
-          .from("orders")
+          .from(ordersTable)
           .update({
             // total_amount: calculatedAmount, // REMOVED - Handled by create-payment-intent function
             services: orderData.services, // Assuming 'services' column is JSONB

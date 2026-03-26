@@ -9,6 +9,7 @@ console.log("Backfill Order Amounts function starting...");
 const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const ordersTable = Deno.env.get("VITE_SUPABASE_ORDERS_TABLE") || "orders";
 
 // Initialize Stripe client *once*
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
@@ -64,7 +65,7 @@ serve(async (req) => {
   try {
     // 1. Fetch orders needing backfill
     const { data: ordersToUpdate, error: fetchError } = await supabaseAdmin
-      .from('orders')
+      .from(ordersTable)
       .select('id, stripe_payment_intent_id')
       .is('total_amount', null) // Where total_amount IS NULL
       .not('stripe_payment_intent_id', 'is', null); // And payment intent ID IS NOT NULL
@@ -108,7 +109,7 @@ serve(async (req) => {
 
         // 4. Update Supabase order
         const { error: updateError } = await supabaseAdmin
-          .from('orders')
+          .from(ordersTable)
           .update({ total_amount: amountInCents })
           .eq('id', order.id);
 

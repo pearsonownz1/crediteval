@@ -13,6 +13,7 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const resendApiKey = Deno.env.get("RESEND_API_KEY"); // Get Resend API Key
 const fromEmail = "noreply@mail.crediteval.com"; // Your verified Resend domain email
+const ordersTable = Deno.env.get("VITE_SUPABASE_ORDERS_TABLE") || "orders";
 
 // --- Initialize Clients ---
 let supabaseAdmin: SupabaseClient | null = null;
@@ -89,7 +90,7 @@ serve(async (req) => {
 
     // --- Fetch Order Details ---
     const { data: orderData, error: fetchError } = await supabaseAdmin
-      .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
+      .from(ordersTable)
       .select(
         "id, first_name, last_name, email, services, total_amount, created_at"
       ) // Adjust columns as needed

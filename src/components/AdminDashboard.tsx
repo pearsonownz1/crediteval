@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
+import { ordersTable } from "../lib/ordersTable";
 import {
   Card,
   CardContent,
@@ -100,7 +101,7 @@ const AdminDashboard = () => {
     setErrorOrders(null);
     try {
       const { data, error: fetchError } = await supabase
-        .from("orders")
+        .from(ordersTable)
         .select("*")
         .order("created_at", { ascending: false });
       if (fetchError) throw fetchError;
@@ -211,7 +212,7 @@ const AdminDashboard = () => {
     setErrorOrders(null);
     try {
       const { error: deleteError } = await supabase
-        .from("orders")
+        .from(ordersTable)
         .delete()
         .in("id", selectedOrderRowKeys);
       if (deleteError) throw deleteError;

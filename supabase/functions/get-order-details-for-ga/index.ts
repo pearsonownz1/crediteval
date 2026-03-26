@@ -9,6 +9,7 @@ console.log("Get Order Details for GA function starting...");
 const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const ordersTable = Deno.env.get("VITE_SUPABASE_ORDERS_TABLE") || "orders";
 
 // Initialize Stripe client *once*
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
@@ -52,7 +53,7 @@ serve(async (req) => {
 
     // 1. Fetch order details from Supabase
     const { data: orderData, error: fetchError } = await supabaseAdmin
-      .from('orders')
+      .from(ordersTable)
       .select('id, total_amount, stripe_payment_intent_id, services') // Fetch necessary fields
       .eq('id', orderId)
       .single(); // Expect only one order
