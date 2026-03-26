@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/select";
 import { MessageSquare, Upload, MoreVertical } from "lucide-react";
 import { Order } from "../../../types/order";
+import { supabase } from "../../../lib/supabaseClient";
+import { ordersTable } from "../../../lib/ordersTable";
 
 interface OrderActionsProps {
   order: Order;
@@ -30,6 +32,116 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
   const [messageDialogOpen, setMessageDialogOpen] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState<string>(
+    order.status || "pending"
+  );
+  const [statusNotes, setStatusNotes] = useState("");
+  const [notifyClientOnStatusUpdate, setNotifyClientOnStatusUpdate] =
+    useState(false);
+  const [notifyClientOnUpload, setNotifyClientOnUpload] = useState(true);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isSavingStatus, setIsSavingStatus] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const sendCompletionEmail = async (notes?: string) => {
+    const { error } = await supabase.functions.invoke(
+      "send-order-completion-email",
+      {
+        body: {
+          orderId: order.id,
+          notes: notes || undefined,
+        },
+      }
+    );
+
+    if (error) {
+      throw error;
+    }
+  };
+
+  const handleStatusUpdate = async () => {
+    try {
+      setIsSavingStatus(true);
+      const { error } = await supabase
+        .from(ordersTable)
+        .update({ status: selectedStatus })
+        .eq("id", order.id);
+
+      if (error) {
+        throw error;
+      }
+
+      if (notifyClientOnStatusUpdate && selectedStatus === "completed") {
+        await sendCompletionEmail(statusNotes);
+      }
+
+      alert("Order status updated.");
+      setStatusDialogOpen(false);
+    } catch (err: any) {
+      console.error("Failed to update order status:", err);
+      alert(err.message || "Failed to update status.");
+    } finally {
+      setIsSavingStatus(false);
+    }
+  };
+
+  const handleUploadAndNotify = async () => {
+    if (selectedFiles.length === 0) {
+      alert("Please select at least one file.");
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      const uploadedPaths: string[] = [];
+
+      for (const file of selectedFiles) {
+        const sanitizedFileName = file.name.replace(/\s+/g, "-");
+        const path = `orders/${order.id}/completed/${Date.now()}-${sanitizedFileName}`;
+        const { error: uploadError } = await supabase.storage
+          .from("documents")
+          .upload(path, file, {
+            upsert: true,
+          });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        uploadedPaths.push(path);
+      }
+
+      const mergedPaths = [
+        ...(order.document_paths || []),
+        ...uploadedPaths,
+      ].filter((value, index, arr) => arr.indexOf(value) === index);
+
+      const { error: updateError } = await supabase
+        .from(ordersTable)
+        .update({
+          status: "completed",
+          document_paths: mergedPaths,
+        })
+        .eq("id", order.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      if (notifyClientOnUpload) {
+        await sendCompletionEmail();
+      }
+
+      alert("Documents uploaded and order marked completed.");
+      setSelectedFiles([]);
+      setUploadDialogOpen(false);
+    } catch (err: any) {
+      console.error("Failed to upload completed documents:", err);
+      alert(err.message || "Failed to upload documents.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   return (
     <div className="flex space-x-1" onClick={(e) => e.stopPropagation()}>
@@ -94,6 +206,12 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
                 className="hidden"
                 id="file-upload-dialog"
                 multiple
+                onChange={(event) => {
+                  const files = event.target.files
+                    ? Array.from(event.target.files)
+                    : [];
+                  setSelectedFiles(files);
+                }}
               />
               <Button
                 variant="outline"
@@ -104,6 +222,18 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
                 Select Files
               </Button>
             </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="notify-client-upload"
+                checked={notifyClientOnUpload}
+                onCheckedChange={(checked) =>
+                  setNotifyClientOnUpload(checked === true)
+                }
+              />
+              <label htmlFor="notify-client-upload" className="text-sm">
+                Notify client after upload
+              </label>
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -111,7 +241,9 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
               onClick={() => setUploadDialogOpen(false)}>
               Cancel
             </Button>
-            <Button>Upload & Notify Client</Button>
+            <Button onClick={handleUploadAndNotify} disabled={isUploading}>
+              {isUploading ? "Uploading..." : "Upload & Complete"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -133,7 +265,7 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Status</label>
-              <Select defaultValue={order.status}>
+              <Select value={selectedStatus} onValueChange={setSelectedStatus}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
@@ -141,16 +273,30 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="processing">Processing</SelectItem>
                   <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="submitted">Submitted</SelectItem>
+                  <SelectItem value="pending_payment">Pending Payment</SelectItem>
+                  <SelectItem value="paid">Paid</SelectItem>
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Notes</label>
-              <Textarea placeholder="Add internal notes..." rows={3} />
+              <Textarea
+                placeholder="Add internal notes..."
+                rows={3}
+                value={statusNotes}
+                onChange={(event) => setStatusNotes(event.target.value)}
+              />
             </div>
             <div className="flex items-center space-x-2">
-              <Checkbox id="notify-client-status" />
+              <Checkbox
+                id="notify-client-status"
+                checked={notifyClientOnStatusUpdate}
+                onCheckedChange={(checked) =>
+                  setNotifyClientOnStatusUpdate(checked === true)
+                }
+              />
               <label htmlFor="notify-client-status" className="text-sm">
                 Notify client
               </label>
@@ -162,7 +308,9 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
               onClick={() => setStatusDialogOpen(false)}>
               Cancel
             </Button>
-            <Button>Update Status</Button>
+            <Button onClick={handleStatusUpdate} disabled={isSavingStatus}>
+              {isSavingStatus ? "Updating..." : "Update Status"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
