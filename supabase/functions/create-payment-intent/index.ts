@@ -14,6 +14,7 @@ const stripeSecretKey =
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const ordersTable = Deno.env.get("VITE_SUPABASE_ORDERS_TABLE") || "orders";
 
 // Initialize Stripe client *once* outside the handler
 const stripe = stripeSecretKey
@@ -166,7 +167,7 @@ serve(async (req) => {
       } else if (orderId) {
         updateData.total_amount = amount; // Ensure total_amount is stored/updated correctly
         updateResult = await supabaseAdmin
-          .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
+          .from(ordersTable)
           .update(updateData)
           .eq("id", orderId);
       }

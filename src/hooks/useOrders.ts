@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { Order } from "../types/order";
 
@@ -7,7 +7,7 @@ export const useOrders = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -38,7 +38,7 @@ export const useOrders = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const deleteOrders = async (ids: string[]) => {
     if (ids.length === 0)
@@ -63,7 +63,22 @@ export const useOrders = () => {
 
   useEffect(() => {
     fetchOrders();
-  }, []);
+
+    const channel = supabase
+      .channel("orders-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        () => {
+          void fetchOrders();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [fetchOrders]);
 
   // Calculate stats
   const stats = {

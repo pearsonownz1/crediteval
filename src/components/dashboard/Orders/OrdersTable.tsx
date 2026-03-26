@@ -115,7 +115,6 @@ export const OrdersTable: React.FC<OrdersTableProps> = ({
           {!loading &&
             !error &&
             orders
-              .filter((order) => order.status !== "pending")
               .map((order) => (
                 <TableRow key={order.id}>
                   <TableCell onClick={(e) => e.stopPropagation()}>

@@ -6,6 +6,7 @@ console.log("Update Order Services function starting...");
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const ordersTable = Deno.env.get("VITE_SUPABASE_ORDERS_TABLE") || "orders";
 
 const supabaseAdmin =
   supabaseUrl && supabaseServiceRoleKey
@@ -53,7 +54,7 @@ serve(async (req) => {
     console.log(`Processing request to update services for order ${orderId}`);
 
     const { data: existingOrder, error: fetchError } = await supabaseAdmin
-      .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
+      .from(ordersTable)
       .select("services")
       .eq("id", orderId)
       .single();
@@ -92,7 +93,7 @@ serve(async (req) => {
     }
 
     const { error: updateError } = await supabaseAdmin
-      .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
+      .from(ordersTable)
       .update(updatePayload)
       .eq("id", orderId);
 

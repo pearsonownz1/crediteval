@@ -7,6 +7,7 @@ console.log("Update Order Documents function starting...");
 // IMPORTANT: Set these in your Supabase project's Function Environment Variables settings.
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const ordersTable = Deno.env.get("VITE_SUPABASE_ORDERS_TABLE") || "orders";
 
 // Create Supabase client configured to use service_role key *once*
 const supabaseAdmin =
@@ -55,7 +56,7 @@ serve(async (req) => {
     // --- Fetch current paths and Update using Service Role ---
     // 1. Fetch current paths
     const { data: orderData, error: fetchError } = await supabaseAdmin
-      .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
+      .from(ordersTable)
       .select("document_paths")
       .eq("id", orderId)
       .single();
@@ -77,7 +78,7 @@ serve(async (req) => {
 
     // 3. Update the order record
     const { error: updateError } = await supabaseAdmin
-      .from(Deno.env.get("VITE_SUPABASE_ORDERS_TABLE"))
+      .from(ordersTable)
       .update({ document_paths: updatedPaths })
       .eq("id", orderId);
 
