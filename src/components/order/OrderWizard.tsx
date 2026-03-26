@@ -41,6 +41,8 @@ import {
 import { calculatePrice } from "../../utils/order/priceCalculation";
 import { getStepTitles } from "../../constants/order/steps";
 import { OrderWizardProps, ServiceInfo } from "../../types/order/index";
+import { supabase } from "../../lib/supabaseClient";
+import { ordersTable } from "../../lib/ordersTable";
 
 const OrderWizard: React.FC<OrderWizardProps> = ({
   onComplete = () => {},
@@ -359,26 +361,39 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
       console.log(
         "OrderWizard: handleNext - currentStep is final step. Submitting request."
       );
-      if (!orderEditToken) {
-        setError(
-          "Your secure editing session expired. Please restart your order from the email link or begin a new request."
-        );
+      if (!orderId) {
+        setError("Missing order ID. Please restart your request.");
         return;
       }
+      const submittedServices = isTranslationFlow
+        ? {
+            ...orderData.services,
+            previewStatus: "not_ready",
+            unlockStatus: "not_available",
+            translatorStatus: "unassigned",
+          }
+        : orderData.services;
       try {
-        await updateOrderWithServices(
-          orderId!,
-          isTranslationFlow
-            ? {
-                ...orderData.services,
-                previewStatus: "not_ready",
-                unlockStatus: "not_available",
-                translatorStatus: "unassigned",
-              }
-            : orderData.services,
-          orderEditToken,
-          "submitted"
-        );
+        if (orderEditToken) {
+          await updateOrderWithServices(
+            orderId,
+            submittedServices,
+            orderEditToken,
+            "submitted"
+          );
+        } else {
+          const { error: updateError } = await supabase
+            .from(ordersTable)
+            .update({
+              services: submittedServices,
+              status: "submitted",
+            })
+            .eq("id", orderId);
+
+          if (updateError) {
+            throw updateError;
+          }
+        }
         stopTracking();
         onComplete({ ...orderData, orderId });
         navigate(`/order-success?orderId=${orderId}&mode=request-submitted`);
@@ -505,16 +520,23 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
           </CardContent>
 
           <CardFooter>
-            <StepNavigation
-              currentStep={currentStep}
-              onBack={handleBack}
-              onNext={handleNext}
-              totalSteps={totalSteps}
-              isSubmitting={isSubmitting}
-              paymentProcessing={false}
-              isStripeReady={true}
-              nextButtonText={currentStep === totalSteps - 1 ? "Submit Request" : undefined}
-            />
+            <div className="w-full space-y-3">
+              {error && currentStep === totalSteps - 1 && (
+                <p className="text-sm text-red-500">{error}</p>
+              )}
+              <StepNavigation
+                currentStep={currentStep}
+                onBack={handleBack}
+                onNext={handleNext}
+                totalSteps={totalSteps}
+                isSubmitting={isSubmitting}
+                paymentProcessing={false}
+                isStripeReady={true}
+                nextButtonText={
+                  currentStep === totalSteps - 1 ? "Submit Request" : undefined
+                }
+              />
+            </div>
           </CardFooter>
         </Card>
       </div>
