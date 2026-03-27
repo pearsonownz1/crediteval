@@ -28,6 +28,11 @@ interface OrderActionsProps {
   order: Order;
 }
 
+const DEFAULT_SITE_URL = "https://crediteval.com";
+const DEFAULT_NOTARIZATION_FEE = 2500;
+const DEFAULT_MAIL_FEE = 1500;
+const DEFAULT_INTERNATIONAL_MAIL_FEE = 4500;
+
 export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
   const [messageDialogOpen, setMessageDialogOpen] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
@@ -39,7 +44,35 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
   const [notifyClientOnStatusUpdate, setNotifyClientOnStatusUpdate] =
     useState(false);
   const [notifyClientOnUpload, setNotifyClientOnUpload] = useState(true);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [previewFiles, setPreviewFiles] = useState<File[]>([]);
+  const [finalFiles, setFinalFiles] = useState<File[]>([]);
+  const [quotedUnlockAmount, setQuotedUnlockAmount] = useState<string>(
+    typeof order.services?.quotedUnlockAmount === "number"
+      ? (order.services.quotedUnlockAmount / 100).toFixed(2)
+      : typeof order.total_amount === "number"
+      ? (order.total_amount / 100).toFixed(2)
+      : ""
+  );
+  const [includeNotarizationOption, setIncludeNotarizationOption] = useState(
+    order.services?.notarizationRequested ?? false
+  );
+  const [notarizationFee, setNotarizationFee] = useState(
+    (
+      (order.services?.notarizationFee ?? DEFAULT_NOTARIZATION_FEE) / 100
+    ).toFixed(2)
+  );
+  const [expressMailFee, setExpressMailFee] = useState(
+    ((order.services?.expressMailFee ?? DEFAULT_MAIL_FEE) / 100).toFixed(2)
+  );
+  const [internationalMailFee, setInternationalMailFee] = useState(
+    (
+      (order.services?.internationalMailFee ?? DEFAULT_INTERNATIONAL_MAIL_FEE) /
+      100
+    ).toFixed(2)
+  );
+  const [mailingOption, setMailingOption] = useState(
+    order.services?.deliveryType || "email"
+  );
   const [isSavingStatus, setIsSavingStatus] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -57,6 +90,46 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
     if (error) {
       throw error;
     }
+  };
+
+  const uploadFilesToPath = async (
+    files: File[],
+    subfolder: "preview" | "final"
+  ) => {
+    const uploadedPaths: string[] = [];
+
+    for (const file of files) {
+      const sanitizedFileName = file.name.replace(/\s+/g, "-");
+      const path = `orders/${order.id}/${subfolder}/${Date.now()}-${sanitizedFileName}`;
+      const { error: uploadError } = await supabase.storage
+        .from("documents")
+        .upload(path, file, {
+          upsert: true,
+        });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      uploadedPaths.push(path);
+    }
+
+    return uploadedPaths;
+  };
+
+  const getMailingFee = (deliveryType: string) => {
+    const expressFee = Math.round(Number(expressMailFee || "0") * 100);
+    const intlFee = Math.round(Number(internationalMailFee || "0") * 100);
+
+    if (deliveryType === "express") {
+      return expressFee;
+    }
+
+    if (deliveryType === "international") {
+      return intlFee;
+    }
+
+    return 0;
   };
 
   const handleStatusUpdate = async () => {
@@ -86,41 +159,71 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
   };
 
   const handleUploadAndNotify = async () => {
-    if (selectedFiles.length === 0) {
-      alert("Please select at least one file.");
+    if (previewFiles.length === 0) {
+      alert("Please select at least one preview file.");
       return;
     }
 
     try {
       setIsUploading(true);
-      const uploadedPaths: string[] = [];
 
-      for (const file of selectedFiles) {
-        const sanitizedFileName = file.name.replace(/\s+/g, "-");
-        const path = `orders/${order.id}/completed/${Date.now()}-${sanitizedFileName}`;
-        const { error: uploadError } = await supabase.storage
-          .from("documents")
-          .upload(path, file, {
-            upsert: true,
-          });
+      const quotedAmountInCents = quotedUnlockAmount
+        ? Math.round(Number(quotedUnlockAmount) * 100)
+        : null;
+      const notarizationFeeInCents = Math.round(Number(notarizationFee || "0") * 100);
+      const expressMailFeeInCents = Math.round(Number(expressMailFee || "0") * 100);
+      const internationalMailFeeInCents = Math.round(
+        Number(internationalMailFee || "0") * 100
+      );
 
-        if (uploadError) {
-          throw uploadError;
-        }
-
-        uploadedPaths.push(path);
+      if (quotedUnlockAmount && (!quotedAmountInCents || quotedAmountInCents < 50)) {
+        throw new Error("Please enter a valid unlock price of at least $0.50.");
       }
+
+      const previewPaths = await uploadFilesToPath(previewFiles, "preview");
+      const finalPaths =
+        finalFiles.length > 0 ? await uploadFilesToPath(finalFiles, "final") : [];
 
       const mergedPaths = [
         ...(order.document_paths || []),
-        ...uploadedPaths,
+        ...previewPaths,
+        ...finalPaths,
       ].filter((value, index, arr) => arr.indexOf(value) === index);
+
+      const nextServices = {
+        ...(order.services || {}),
+        _meta: {
+          ...(order.services?._meta || {}),
+          reviewToken:
+            order.services?._meta?.reviewToken || crypto.randomUUID(),
+        },
+        previewFilePath: previewPaths[0] || order.services?.previewFilePath,
+        finalFilePath: finalPaths[0] || order.services?.finalFilePath,
+        previewStatus: "ready" as const,
+        unlockStatus: quotedAmountInCents
+          ? ("available" as const)
+          : order.services?.unlockStatus,
+        translatorStatus: "completed" as const,
+        quotedUnlockAmount:
+          quotedAmountInCents ?? order.services?.quotedUnlockAmount,
+        previewReadyAt: new Date().toISOString(),
+        previewSentAt: notifyClientOnUpload
+          ? new Date().toISOString()
+          : order.services?.previewSentAt,
+        notarizationRequested: includeNotarizationOption,
+        notarizationFee: notarizationFeeInCents,
+        expressMailFee: expressMailFeeInCents,
+        internationalMailFee: internationalMailFeeInCents,
+        deliveryType: mailingOption,
+      };
 
       const { error: updateError } = await supabase
         .from(ordersTable)
         .update({
-          status: "completed",
+          status: quotedAmountInCents ? "pending_payment" : "preview_ready",
           document_paths: mergedPaths,
+          total_amount: quotedAmountInCents ?? order.total_amount,
+          services: nextServices,
         })
         .eq("id", order.id);
 
@@ -132,8 +235,9 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
         await sendCompletionEmail();
       }
 
-      alert("Documents uploaded and order marked completed.");
-      setSelectedFiles([]);
+      alert("Preview prepared and order updated.");
+      setPreviewFiles([]);
+      setFinalFiles([]);
       setUploadDialogOpen(false);
     } catch (err: any) {
       console.error("Failed to upload completed documents:", err);
@@ -143,9 +247,16 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
     }
   };
 
+  const reviewLink = `${
+    import.meta.env.VITE_SITE_URL || DEFAULT_SITE_URL
+  }/order-review/${order.id}?token=${
+    order.services?._meta?.reviewToken ||
+    order.services?._meta?.editToken ||
+    ""
+  }`;
+
   return (
     <div className="flex space-x-1" onClick={(e) => e.stopPropagation()}>
-      {/* Message Dialog */}
       <Dialog open={messageDialogOpen} onOpenChange={setMessageDialogOpen}>
         <DialogTrigger asChild>
           <Button variant="ghost" size="icon" title="Message Client">
@@ -181,60 +292,226 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
         </DialogContent>
       </Dialog>
 
-      {/* Upload Dialog */}
       <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
         <DialogTrigger asChild>
-          <Button variant="ghost" size="icon" title="Upload Documents">
+          <Button variant="ghost" size="icon" title="Prepare Preview">
             <Upload className="h-4 w-4" />
           </Button>
         </DialogTrigger>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Upload Documents</DialogTitle>
+            <DialogTitle>Prepare Preview & Quote</DialogTitle>
             <DialogDescription>
-              Upload completed documents for order {order.id}
+              Upload the preview, optional final file, and unlock price for
+              order {order.id}
             </DialogDescription>
           </DialogHeader>
+
           <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Unlock Price (USD)</label>
+              <Input
+                type="number"
+                min="0.50"
+                step="0.01"
+                placeholder="49.00"
+                value={quotedUnlockAmount}
+                onChange={(event) => setQuotedUnlockAmount(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Base translation price before optional notarization or mailing
+                fees.
+              </p>
+            </div>
+
             <div className="border-2 border-dashed rounded-lg p-6 text-center">
               <Upload className="h-8 w-8 mx-auto text-gray-400" />
-              <p className="mt-2 text-sm text-gray-500">
-                Drag and drop files here or click to browse
+              <p className="mt-2 text-sm font-medium">Watermarked Preview</p>
+              <p className="mt-1 text-sm text-gray-500">
+                Upload the document the customer will review before payment.
               </p>
               <Input
                 type="file"
                 className="hidden"
-                id="file-upload-dialog"
+                id={`preview-file-upload-dialog-${order.id}`}
                 multiple
                 onChange={(event) => {
                   const files = event.target.files
                     ? Array.from(event.target.files)
                     : [];
-                  setSelectedFiles(files);
+                  setPreviewFiles(files);
                 }}
               />
               <Button
                 variant="outline"
                 className="mt-4"
                 onClick={() =>
-                  document.getElementById("file-upload-dialog")?.click()
+                  document
+                    .getElementById(`preview-file-upload-dialog-${order.id}`)
+                    ?.click()
                 }>
-                Select Files
+                Select Preview Files
               </Button>
+              {previewFiles.length > 0 && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {previewFiles.length} preview file
+                  {previewFiles.length === 1 ? "" : "s"} selected
+                </p>
+              )}
             </div>
+
+            <div className="border rounded-lg p-4 text-center">
+              <p className="text-sm font-medium">Optional Final Files</p>
+              <p className="mt-1 text-sm text-gray-500">
+                Upload the clean non-watermarked version now if you want the
+                customer to download immediately after payment.
+              </p>
+              <Input
+                type="file"
+                className="hidden"
+                id={`final-file-upload-dialog-${order.id}`}
+                multiple
+                onChange={(event) => {
+                  const files = event.target.files
+                    ? Array.from(event.target.files)
+                    : [];
+                  setFinalFiles(files);
+                }}
+              />
+              <Button
+                variant="outline"
+                className="mt-4"
+                onClick={() =>
+                  document
+                    .getElementById(`final-file-upload-dialog-${order.id}`)
+                    ?.click()
+                }>
+                Select Final Files
+              </Button>
+              {finalFiles.length > 0 && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {finalFiles.length} final file
+                  {finalFiles.length === 1 ? "" : "s"} selected
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-lg border p-4 space-y-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id={`include-notarization-option-${order.id}`}
+                  checked={includeNotarizationOption}
+                  onCheckedChange={(checked) =>
+                    setIncludeNotarizationOption(checked === true)
+                  }
+                />
+                <label
+                  htmlFor={`include-notarization-option-${order.id}`}
+                  className="text-sm">
+                  Offer notarization add-on (+$
+                  {(DEFAULT_NOTARIZATION_FEE / 100).toFixed(2)})
+                </label>
+              </div>
+
+              {includeNotarizationOption && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    Notarization Fee (USD)
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={notarizationFee}
+                    onChange={(event) => setNotarizationFee(event.target.value)}
+                  />
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  Mailing Option Available to Customer
+                </label>
+                <Select
+                  value={mailingOption}
+                  onValueChange={(value) =>
+                    setMailingOption(value as "email" | "express" | "international")
+                  }>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="email">Digital only</SelectItem>
+                    <SelectItem value="express">
+                      Mail available (+${(DEFAULT_MAIL_FEE / 100).toFixed(2)})
+                    </SelectItem>
+                    <SelectItem value="international">
+                      International mail (+$
+                      {(DEFAULT_INTERNATIONAL_MAIL_FEE / 100).toFixed(2)})
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {mailingOption === "express" && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    Domestic Mail Fee (USD)
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={expressMailFee}
+                    onChange={(event) => setExpressMailFee(event.target.value)}
+                  />
+                </div>
+              )}
+
+              {mailingOption === "international" && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    International Mail Fee (USD)
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={internationalMailFee}
+                    onChange={(event) =>
+                      setInternationalMailFee(event.target.value)
+                    }
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-lg border bg-muted/40 p-4 text-sm space-y-1 break-all">
+              <p>Review link: {reviewLink}</p>
+              {mailingOption !== "email" && (
+                <p>
+                  Mailing surcharge: $
+                  {(getMailingFee(mailingOption) / 100).toFixed(2)}
+                </p>
+              )}
+            </div>
+
             <div className="flex items-center space-x-2">
               <Checkbox
-                id="notify-client-upload"
+                id={`notify-client-upload-${order.id}`}
                 checked={notifyClientOnUpload}
                 onCheckedChange={(checked) =>
                   setNotifyClientOnUpload(checked === true)
                 }
               />
-              <label htmlFor="notify-client-upload" className="text-sm">
-                Notify client after upload
+              <label
+                htmlFor={`notify-client-upload-${order.id}`}
+                className="text-sm">
+                Notify client after saving preview
               </label>
             </div>
           </div>
+
           <DialogFooter>
             <Button
               variant="outline"
@@ -242,13 +519,12 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
               Cancel
             </Button>
             <Button onClick={handleUploadAndNotify} disabled={isUploading}>
-              {isUploading ? "Uploading..." : "Upload & Complete"}
+              {isUploading ? "Saving..." : "Save & Notify Client"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Status Dialog */}
       <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
         <DialogTrigger asChild>
           <Button variant="ghost" size="icon" title="Update Status">
@@ -271,11 +547,12 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="processing">Processing</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
                   <SelectItem value="submitted">Submitted</SelectItem>
+                  <SelectItem value="preview_ready">Preview Ready</SelectItem>
                   <SelectItem value="pending_payment">Pending Payment</SelectItem>
                   <SelectItem value="paid">Paid</SelectItem>
+                  <SelectItem value="processing">Processing</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
@@ -291,13 +568,15 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
             </div>
             <div className="flex items-center space-x-2">
               <Checkbox
-                id="notify-client-status"
+                id={`notify-client-status-${order.id}`}
                 checked={notifyClientOnStatusUpdate}
                 onCheckedChange={(checked) =>
                   setNotifyClientOnStatusUpdate(checked === true)
                 }
               />
-              <label htmlFor="notify-client-status" className="text-sm">
+              <label
+                htmlFor={`notify-client-status-${order.id}`}
+                className="text-sm">
                 Notify client
               </label>
             </div>

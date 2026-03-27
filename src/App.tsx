@@ -30,6 +30,7 @@ import EmploymentUseCase from "./components/use-cases/EmploymentUseCase";
 import { QuotePaymentPage } from "./components/QuotePaymentPage"; // Import the new payment page
 import QuotePaymentSuccessPage from "./components/QuotePaymentSuccessPage";
 import { PaymentSuccessPage } from "./components/PaymentSuccessPage"; // Import the payment success page
+import OrderReviewPage from "./components/OrderReviewPage";
 import { OrderProvider } from "./contexts/OrderContext"; // Import the OrderProvider
 import { QuoteDetailsPage } from "./pages/QuoteDetailsPage"; // Import QuoteDetailsPage
 import { Toaster } from "@/components/ui/toaster"; // Import Toaster
@@ -216,6 +217,14 @@ function App() {
             element={<QuotePaymentPage />}
           />{" "}
           {/* Add quote payment page route */}
+          <Route
+            path="/order-review/:orderId"
+            element={
+              <Layout>
+                <OrderReviewPage />
+              </Layout>
+            }
+          />
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>
             <Route

@@ -98,6 +98,21 @@ export const updateOrderServices = async (
   });
 };
 
+export const updateOrderServicesWithStatus = async (
+  orderId: string,
+  services: any,
+  editToken: string,
+  status: string
+) => {
+  return invokeOrderServicesFunction({
+    orderId,
+    services,
+    editToken,
+    status,
+    finalizeSubmission: true,
+  });
+};
+
 export const callPaymentIntent = async (
   orderId: string,
   amount: number,

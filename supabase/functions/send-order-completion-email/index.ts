@@ -11,6 +11,7 @@ const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const resendApiKey = Deno.env.get("RESEND_API_KEY");
 const fromEmail = Deno.env.get("FROM_EMAIL") || "noreply@mail.crediteval.com";
 const ordersTable = Deno.env.get("VITE_SUPABASE_ORDERS_TABLE") || "orders";
+const siteUrl = Deno.env.get("SITE_URL") || "https://crediteval.com";
 
 let supabaseAdmin: SupabaseClient | null = null;
 if (supabaseUrl && supabaseServiceRoleKey) {
@@ -51,7 +52,7 @@ serve(async (req) => {
 
     const { data: orderData, error: fetchError } = await supabaseAdmin
       .from(ordersTable)
-      .select("id, first_name, last_name, email, document_paths, total_amount")
+      .select("id, first_name, last_name, email, document_paths, total_amount, services")
       .eq("id", orderId)
       .single();
 
@@ -67,6 +68,26 @@ serve(async (req) => {
       orderData.last_name || ""
     }`.trim();
 
+    const services =
+      orderData.services && typeof orderData.services === "object"
+        ? (orderData.services as Record<string, unknown>)
+        : {};
+    const orderMeta =
+      typeof services._meta === "object" && services._meta
+        ? (services._meta as Record<string, unknown>)
+        : {};
+    const reviewToken =
+      typeof orderMeta.reviewToken === "string"
+        ? orderMeta.reviewToken
+        : typeof orderMeta.editToken === "string"
+        ? orderMeta.editToken
+        : "";
+    const reviewUrl = reviewToken
+      ? `${siteUrl}/order-review/${orderData.id}?token=${encodeURIComponent(
+          reviewToken
+        )}`
+      : "";
+
     const documentLinks = (orderData.document_paths || [])
       .map((path: string) => {
         const url = `${supabaseUrl}/storage/v1/object/public/documents/${path}`;
@@ -78,26 +99,140 @@ serve(async (req) => {
       typeof orderData.total_amount === "number"
         ? `$${(orderData.total_amount / 100).toFixed(2)}`
         : "your quoted amount";
+    const serviceType =
+      typeof services.type === "string"
+        ? services.type.replace(/_/g, " ")
+        : "translation";
+    const languagePair =
+      typeof services.languageFrom === "string" &&
+      typeof services.languageTo === "string"
+        ? `${services.languageFrom} to ${services.languageTo}`
+        : "Prepared translation preview";
+    const pageCount =
+      typeof services.pageCount === "number" ? `${services.pageCount} page${services.pageCount === 1 ? "" : "s"}` : "Custom page count";
+    const notarizationFee =
+      typeof services.notarizationFee === "number"
+        ? `$${(services.notarizationFee / 100).toFixed(2)}`
+        : "$25.00";
+    const expressMailFee =
+      typeof services.expressMailFee === "number"
+        ? `$${(services.expressMailFee / 100).toFixed(2)}`
+        : "$15.00";
+    const internationalMailFee =
+      typeof services.internationalMailFee === "number"
+        ? `$${(services.internationalMailFee / 100).toFixed(2)}`
+        : "$45.00";
 
     const html = `
-      <h2>Your translation is ready for review</h2>
-      <p>Hi ${customerName || "there"},</p>
-      <p>Your order <strong>#${orderData.id}</strong> has been completed and is ready for review.</p>
-      <p>You can review the completed document(s) below:</p>
-      <ul>${documentLinks || "<li>No documents were attached.</li>"}</ul>
-      <p>When you are ready, complete payment (${amountText}) to unlock final delivery and download access.</p>
-      ${
-        notes
-          ? `<p><strong>Additional note from our team:</strong><br/>${notes}</p>`
-          : ""
-      }
-      <p>Thanks,<br/>CreditEval Team</p>
+      <div style="margin:0;padding:32px 0;background:#eef4ff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#10233f;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;margin:0 auto;">
+          <tr>
+            <td style="padding:0 20px;">
+              <div style="background:linear-gradient(135deg,#0f4c81 0%,#1e78c9 55%,#7dc5ff 100%);border-radius:28px;padding:32px 32px 22px;color:#ffffff;box-shadow:0 18px 45px rgba(16,35,63,0.18);">
+                <div style="display:inline-block;padding:8px 14px;border-radius:999px;background:rgba(255,255,255,0.16);font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">
+                  CreditEval Preview Ready
+                </div>
+                <h1 style="margin:18px 0 10px;font-size:34px;line-height:1.1;font-weight:800;color:#ffffff;">
+                  Review your watermarked translation preview
+                </h1>
+                <p style="margin:0;font-size:17px;line-height:1.7;color:rgba(255,255,255,0.9);max-width:520px;">
+                  Hi ${customerName || "there"}, your order is ready. Open your private review page to preview the PDF, confirm delivery options, and unlock the final clean version when you're ready.
+                </p>
+              </div>
+
+              <div style="margin-top:-18px;background:#ffffff;border-radius:28px;padding:28px;box-shadow:0 20px 45px rgba(21,49,89,0.1);">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:20px;">
+                  <tr>
+                    <td style="padding:0 0 18px;border-bottom:1px solid #e8eef9;">
+                      <div style="font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#4f6b95;">Order Summary</div>
+                      <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div style="padding:16px;border-radius:18px;background:#f7faff;">
+                          <div style="font-size:12px;color:#6b7f9f;text-transform:uppercase;letter-spacing:0.06em;">Order ID</div>
+                          <div style="margin-top:6px;font-size:18px;font-weight:700;color:#10233f;">#${orderData.id}</div>
+                        </div>
+                        <div style="padding:16px;border-radius:18px;background:#f7faff;">
+                          <div style="font-size:12px;color:#6b7f9f;text-transform:uppercase;letter-spacing:0.06em;">Unlock Price</div>
+                          <div style="margin-top:6px;font-size:18px;font-weight:700;color:#10233f;">${amountText}</div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:22px;">
+                  <tr>
+                    <td style="padding:18px;border-radius:22px;background:#10233f;color:#dce9ff;">
+                      <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9ecbff;">What's inside</div>
+                      <div style="margin-top:12px;font-size:16px;line-height:1.7;">
+                        <div><strong style="color:#ffffff;">Service:</strong> ${serviceType}</div>
+                        <div><strong style="color:#ffffff;">Languages:</strong> ${languagePair}</div>
+                        <div><strong style="color:#ffffff;">Volume:</strong> ${pageCount}</div>
+                        <div><strong style="color:#ffffff;">Optional add-ons:</strong> Notarization ${notarizationFee}, domestic mail ${expressMailFee}, international mail ${internationalMailFee}</div>
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+
+                ${
+                  reviewUrl
+                    ? `
+                <div style="text-align:center;margin:26px 0 22px;">
+                  <a href="${reviewUrl}" style="display:inline-block;padding:16px 26px;border-radius:16px;background:linear-gradient(135deg,#0f4c81 0%,#1e78c9 100%);color:#ffffff;text-decoration:none;font-size:16px;font-weight:800;box-shadow:0 14px 28px rgba(30,120,201,0.28);">
+                    Review Preview And Purchase
+                  </a>
+                </div>
+                `
+                    : ""
+                }
+
+                <div style="padding:18px;border-radius:20px;background:#f8fbff;border:1px solid #e5eef9;">
+                  <div style="font-size:14px;font-weight:700;color:#10233f;margin-bottom:8px;">What happens next</div>
+                  <div style="font-size:15px;line-height:1.8;color:#4d6285;">
+                    1. Review the watermarked PDF on your private page.<br/>
+                    2. Choose any extras like notarization or mailing.<br/>
+                    3. Pay securely to unlock the final deliverable and download access.
+                  </div>
+                </div>
+
+                ${
+                  notes
+                    ? `
+                <div style="margin-top:18px;padding:18px;border-radius:20px;background:#fff7ec;border:1px solid #f6ddbc;">
+                  <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;color:#9a5b12;">Note from our team</div>
+                  <div style="margin-top:8px;font-size:15px;line-height:1.7;color:#6c4a1b;">${notes}</div>
+                </div>
+                `
+                    : ""
+                }
+
+                ${
+                  documentLinks
+                    ? `
+                <div style="margin-top:18px;">
+                  <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;color:#4f6b95;">Attached files</div>
+                  <ul style="margin:10px 0 0;padding-left:18px;color:#35527a;line-height:1.8;">
+                    ${documentLinks}
+                  </ul>
+                </div>
+                `
+                    : ""
+                }
+              </div>
+
+              <div style="padding:18px 10px 0;text-align:center;font-size:13px;line-height:1.7;color:#627a9d;">
+                CreditEval Team<br/>
+                Fast, accurate translation previews with clean final delivery after approval.
+              </div>
+            </td>
+          </tr>
+        </table>
+      </div>
     `;
 
     const { error: sendError } = await resend.emails.send({
       from: fromEmail,
       to: orderData.email,
-      subject: `Your CreditEval order is ready for review (#${orderData.id})`,
+      subject: `Your CreditEval preview is ready (#${orderData.id})`,
       html,
     });
 

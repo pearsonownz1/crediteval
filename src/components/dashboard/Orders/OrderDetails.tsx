@@ -10,6 +10,8 @@ interface OrderDetailsProps {
   onOpenChange: (open: boolean) => void;
 }
 
+const DEFAULT_SITE_URL = "https://crediteval.com";
+
 export const OrderDetails: React.FC<OrderDetailsProps> = ({
   order,
   open,
@@ -150,6 +152,89 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({
               <span className="text-xs whitespace-pre-wrap">
                 {order.services.specialInstructions}
               </span>
+            </div>
+          )}
+
+          {typeof order.services.quotedUnlockAmount === "number" && (
+            <div className="grid grid-cols-[120px_1fr] items-start gap-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                Unlock Price:
+              </span>
+              <span className="text-xs">
+                ${(order.services.quotedUnlockAmount / 100).toFixed(2)}
+              </span>
+            </div>
+          )}
+
+          {typeof order.services.notarizationFee === "number" && (
+            <div className="grid grid-cols-[120px_1fr] items-start gap-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                Notary Fee:
+              </span>
+              <span className="text-xs">
+                ${(order.services.notarizationFee / 100).toFixed(2)}
+              </span>
+            </div>
+          )}
+
+          {typeof order.services.expressMailFee === "number" && (
+            <div className="grid grid-cols-[120px_1fr] items-start gap-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                Express Mail:
+              </span>
+              <span className="text-xs">
+                ${(order.services.expressMailFee / 100).toFixed(2)}
+              </span>
+            </div>
+          )}
+
+          {typeof order.services.internationalMailFee === "number" && (
+            <div className="grid grid-cols-[120px_1fr] items-start gap-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                Intl Mail:
+              </span>
+              <span className="text-xs">
+                ${(order.services.internationalMailFee / 100).toFixed(2)}
+              </span>
+            </div>
+          )}
+
+          {order.services.previewStatus && (
+            <div className="grid grid-cols-[120px_1fr] items-start gap-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                Preview Status:
+              </span>
+              <span className="text-xs">{formatStatus(order.services.previewStatus)}</span>
+            </div>
+          )}
+
+          {order.services.unlockStatus && (
+            <div className="grid grid-cols-[120px_1fr] items-start gap-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                Unlock Status:
+              </span>
+              <span className="text-xs">{formatStatus(order.services.unlockStatus)}</span>
+            </div>
+          )}
+
+          {order.services.previewFilePath && (
+            <div className="grid grid-cols-[120px_1fr] items-start gap-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                Review Link:
+              </span>
+              <a
+                className="text-xs text-blue-600 hover:underline break-all"
+                href={`${
+                  import.meta.env.VITE_SITE_URL || DEFAULT_SITE_URL
+                }/order-review/${order.id}?token=${
+                  order.services?._meta?.reviewToken ||
+                  order.services?._meta?.editToken ||
+                  ""
+                }`}
+                target="_blank"
+                rel="noopener noreferrer">
+                Open customer review page
+              </a>
             </div>
           )}
         </div>

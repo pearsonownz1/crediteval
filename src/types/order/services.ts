@@ -39,6 +39,13 @@ export interface ServiceInfo {
   deliveredAt?: string;
   deliveryConfirmedAt?: string;
   paidAt?: string;
+  notarizationFee?: number;
+  expressMailFee?: number;
+  internationalMailFee?: number;
+  _meta?: {
+    editToken?: string;
+    reviewToken?: string;
+  };
 }
 
 export interface ShippingInfo {

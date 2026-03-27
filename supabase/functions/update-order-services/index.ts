@@ -72,7 +72,12 @@ serve(async (req) => {
         ? (existingServices._meta as Record<string, unknown>)
         : null;
 
-    if (!existingMeta || existingMeta.editToken !== editToken) {
+    const isAuthorized =
+      !!existingMeta &&
+      (existingMeta.editToken === editToken ||
+        existingMeta.reviewToken === editToken);
+
+    if (!isAuthorized) {
       return new Response(
         JSON.stringify({ error: "Unauthorized order update." }),
         {
