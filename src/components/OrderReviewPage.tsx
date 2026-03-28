@@ -33,6 +33,13 @@ const INTERNATIONAL_MAIL_FEE = 4500;
 const formatMoney = (amountInCents: number) =>
   `$${(amountInCents / 100).toFixed(2)}`;
 
+const buildWatermarkLabel = (order: Order) => {
+  const customerName = `${order.first_name || ""} ${order.last_name || ""}`.trim();
+  return customerName
+    ? `CreditEval Preview • ${customerName} • Order #${order.id}`
+    : `CreditEval Preview • Order #${order.id}`;
+};
+
 const normalizeAmount = (value: number | string | null | undefined) => {
   if (typeof value === "number") {
     return value;
@@ -417,6 +424,7 @@ const OrderReviewPage: React.FC = () => {
   const [finalUrl, setFinalUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const watermarkLabel = order ? buildWatermarkLabel(order) : "";
 
   useEffect(() => {
     const loadOrder = async () => {
@@ -477,8 +485,8 @@ const OrderReviewPage: React.FC = () => {
 
   return (
     <div className="relative overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(96,165,250,0.22),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.14),_transparent_28%),linear-gradient(180deg,#eff6ff_0%,#f8fafc_52%,#ffffff_100%)]">
-      <div className="container py-10">
-        <div className="mb-8 max-w-4xl">
+      <div className="mx-auto max-w-[1680px] px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mb-8 max-w-5xl">
           <div className="mb-4 inline-flex rounded-full border border-sky-200 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-sky-700 backdrop-blur">
             Private Translation Review
           </div>
@@ -492,7 +500,7 @@ const OrderReviewPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.55fr)_430px]">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.9fr)_380px]">
           <div className="relative overflow-hidden rounded-[32px] border border-slate-200 bg-slate-950 shadow-[0_28px_90px_rgba(15,23,42,0.18)]">
             <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 text-white">
               <div>
@@ -505,15 +513,29 @@ const OrderReviewPage: React.FC = () => {
                 Preview Only
               </div>
             </div>
-            <div className="relative h-[76vh] bg-[linear-gradient(135deg,#0f172a_0%,#16263d_45%,#1e3a5f_100%)] p-4">
+            <div className="relative min-h-[78vh] bg-[linear-gradient(135deg,#0f172a_0%,#16263d_45%,#1e3a5f_100%)] p-3 sm:p-4 lg:min-h-[82vh]">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.16),_transparent_35%)]" />
-              <div className="relative h-full overflow-hidden rounded-[24px] border border-white/10 bg-white shadow-2xl">
+              <div className="relative h-full min-h-[72vh] overflow-hidden rounded-[24px] border border-white/10 bg-white shadow-2xl lg:min-h-[78vh]">
                 {previewUrl ? (
-                  <iframe
-                    title="Translation preview"
-                    src={`${previewUrl}#toolbar=1&navpanes=0&view=FitH`}
-                    className="h-full w-full border-0"
-                  />
+                  <>
+                    <iframe
+                      title="Translation preview"
+                      src={`${previewUrl}#toolbar=1&navpanes=0&view=FitH`}
+                      className="relative z-10 h-full w-full border-0 bg-white"
+                    />
+                    <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
+                      <div className="absolute inset-y-0 left-0 w-20 bg-gradient-to-r from-white/24 to-transparent" />
+                      <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-white/10 to-transparent" />
+                      <div className="absolute inset-0 flex items-center justify-center px-6">
+                        <div className="max-w-[1200px] -rotate-[34deg] select-none text-center text-[44px] font-black uppercase tracking-[0.4em] text-slate-700/18 sm:text-[58px] lg:text-[72px]">
+                          {watermarkLabel}
+                        </div>
+                      </div>
+                      <div className="absolute bottom-6 right-6 rounded-full border border-slate-900/10 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.26em] text-slate-700 shadow-sm backdrop-blur-sm">
+                        Preview Only
+                      </div>
+                    </div>
+                  </>
                 ) : (
                   <div className="flex h-full items-center justify-center p-8 text-center text-slate-500">
                     The preview file has not been uploaded yet. Please check your
