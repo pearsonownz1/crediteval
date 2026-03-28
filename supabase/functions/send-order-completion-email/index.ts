@@ -9,7 +9,7 @@ import { getAllowedCorsHeaders } from "../_shared/cors.ts";
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const resendApiKey = Deno.env.get("RESEND_API_KEY");
-const fromEmail = Deno.env.get("FROM_EMAIL") || "noreply@mail.crediteval.com";
+const fromEmail = "noreply@crediteval.com";
 const ordersTable = Deno.env.get("VITE_SUPABASE_ORDERS_TABLE") || "orders";
 const siteUrl = Deno.env.get("SITE_URL") || "https://crediteval.com";
 
@@ -230,7 +230,7 @@ serve(async (req) => {
     `;
 
     const { error: sendError } = await resend.emails.send({
-      from: fromEmail,
+      from: `CreditEval <${fromEmail}>`,
       to: orderData.email,
       subject: `Your CreditEval preview is ready (#${orderData.id})`,
       html,
