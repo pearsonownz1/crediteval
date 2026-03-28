@@ -198,27 +198,26 @@ const OrderReviewCheckout = ({
   };
 
   return (
-    <div className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,45,85,0.12)]">
-      <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-r from-sky-600 via-blue-500 to-cyan-300 opacity-90" />
-      <div className="relative space-y-6 p-6">
-        <div className="space-y-3 text-white">
-          <div className="inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em]">
+    <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,45,85,0.12)]">
+      <div className="space-y-6 p-6">
+        <div className="space-y-4 rounded-[24px] border border-slate-200 bg-slate-50 p-5 text-slate-950">
+          <div className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-blue-700">
             Unlock Final Delivery
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <p className="text-sm text-blue-100">
+              <p className="text-sm font-medium text-slate-500">
                 {hasQuote ? "Total due today" : "Quote pending"}
               </p>
-              <h2 className="text-4xl font-black tracking-tight">
+              <h2 className="mt-1 text-3xl font-black tracking-tight text-slate-950 sm:text-[2rem]">
                 {hasQuote ? formatMoney(totalAmount) : "Awaiting quote"}
               </h2>
             </div>
-            <div className="w-fit rounded-2xl bg-white/12 px-4 py-3 text-right backdrop-blur">
-              <p className="text-xs uppercase tracking-[0.18em] text-blue-100">
+            <div className="w-fit rounded-2xl border border-slate-200 bg-white px-4 py-3 text-right">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
                 Order
               </p>
-              <p className="text-sm font-semibold">#{order.id}</p>
+              <p className="text-sm font-semibold text-slate-950">#{order.id}</p>
             </div>
           </div>
         </div>
@@ -360,7 +359,7 @@ const OrderReviewCheckout = ({
                 />
               </div>
               <Button
-                className="h-12 w-full rounded-2xl bg-slate-950 text-base font-semibold hover:bg-slate-800"
+                className="h-12 w-full rounded-2xl bg-blue-600 text-base font-semibold text-white hover:bg-blue-700"
                 onClick={handlePayment}
                 disabled={isPaying || !hasQuote}>
                 <CreditCard className="mr-2 h-4 w-4" />
@@ -373,7 +372,7 @@ const OrderReviewCheckout = ({
               <Button
                 asChild
                 variant="outline"
-                className="h-12 w-full rounded-2xl border-slate-200 text-base font-semibold"
+                className="h-12 w-full rounded-2xl border-slate-200 bg-white text-base font-semibold text-slate-900 hover:bg-slate-50"
                 disabled={!previewUrl}>
                 <a href={previewUrl} target="_blank" rel="noopener noreferrer">
                   Review Preview In New Tab
@@ -485,7 +484,7 @@ const OrderReviewPage: React.FC = () => {
 
   return (
     <div className="relative overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(96,165,250,0.22),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.14),_transparent_28%),linear-gradient(180deg,#eff6ff_0%,#f8fafc_52%,#ffffff_100%)]">
-      <div className="mx-auto max-w-[1680px] px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-8 max-w-5xl">
           <div className="mb-4 inline-flex rounded-full border border-sky-200 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-sky-700 backdrop-blur">
             Private Translation Review
@@ -500,7 +499,7 @@ const OrderReviewPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.9fr)_380px]">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_360px]">
           <div className="relative overflow-hidden rounded-[32px] border border-slate-200 bg-slate-950 shadow-[0_28px_90px_rgba(15,23,42,0.18)]">
             <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 text-white">
               <div>
@@ -513,9 +512,9 @@ const OrderReviewPage: React.FC = () => {
                 Preview Only
               </div>
             </div>
-            <div className="relative min-h-[78vh] bg-[linear-gradient(135deg,#0f172a_0%,#16263d_45%,#1e3a5f_100%)] p-3 sm:p-4 lg:min-h-[82vh]">
+            <div className="relative min-h-[68vh] bg-[linear-gradient(135deg,#0f172a_0%,#16263d_45%,#1e3a5f_100%)] p-3 sm:p-4 lg:min-h-[72vh]">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.16),_transparent_35%)]" />
-              <div className="relative h-full min-h-[72vh] overflow-hidden rounded-[24px] border border-white/10 bg-white shadow-2xl lg:min-h-[78vh]">
+              <div className="relative h-full min-h-[62vh] overflow-hidden rounded-[24px] border border-white/10 bg-white shadow-2xl lg:min-h-[68vh]">
                 {previewUrl ? (
                   <>
                     <iframe
@@ -527,7 +526,7 @@ const OrderReviewPage: React.FC = () => {
                       <div className="absolute inset-y-0 left-0 w-20 bg-gradient-to-r from-white/24 to-transparent" />
                       <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-white/10 to-transparent" />
                       <div className="absolute inset-0 flex items-center justify-center px-6">
-                        <div className="max-w-[1200px] -rotate-[34deg] select-none text-center text-[44px] font-black uppercase tracking-[0.4em] text-slate-700/18 sm:text-[58px] lg:text-[72px]">
+                        <div className="max-w-[1000px] -rotate-[34deg] select-none text-center text-[34px] font-black uppercase tracking-[0.32em] text-slate-900/16 sm:text-[44px] lg:text-[56px]">
                           {watermarkLabel}
                         </div>
                       </div>
