@@ -90,7 +90,7 @@ const TranslationServices = () => {
               New Translation Flow
             </div>
             <h1 className="mt-6 text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">
-              Submit your translation for free. Review it first. Pay only when you want the final file.
+              Submit for free. Review first. Pay when you’re ready.
             </h1>
             <p className="mt-6 text-lg leading-8 text-slate-600">
               CreditEval now lets individuals and businesses place certified translation
