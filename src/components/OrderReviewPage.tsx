@@ -33,6 +33,19 @@ const INTERNATIONAL_MAIL_FEE = 4500;
 const formatMoney = (amountInCents: number) =>
   `$${(amountInCents / 100).toFixed(2)}`;
 
+const normalizeAmount = (value: number | string | null | undefined) => {
+  if (typeof value === "number") {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+};
+
 const getMailingFee = (deliveryType: string, order: Order) => {
   if (deliveryType === "express") {
     return order.services?.expressMailFee ?? EXPRESS_MAIL_FEE;
@@ -70,12 +83,15 @@ const OrderReviewCheckout = ({
   const [isPaying, setIsPaying] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const baseAmount = order.services?.quotedUnlockAmount || order.total_amount || 0;
+  const baseAmount = normalizeAmount(
+    order.services?.quotedUnlockAmount ?? order.total_amount
+  );
   const mailingFee = getMailingFee(selectedDeliveryType, order);
   const notarizationFee = notarizationSelected
     ? order.services?.notarizationFee ?? NOTARIZATION_FEE
     : 0;
   const totalAmount = baseAmount + mailingFee + notarizationFee;
+  const hasQuote = baseAmount > 0;
   const isPaid =
     order.services?.unlockStatus === "paid" || order.status === "paid";
 
@@ -182,14 +198,16 @@ const OrderReviewCheckout = ({
           <div className="inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em]">
             Unlock Final Delivery
           </div>
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <p className="text-sm text-blue-100">Total due today</p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm text-blue-100">
+                {hasQuote ? "Total due today" : "Quote pending"}
+              </p>
               <h2 className="text-4xl font-black tracking-tight">
-                {formatMoney(totalAmount)}
+                {hasQuote ? formatMoney(totalAmount) : "Awaiting quote"}
               </h2>
             </div>
-            <div className="rounded-2xl bg-white/12 px-4 py-3 text-right backdrop-blur">
+            <div className="w-fit rounded-2xl bg-white/12 px-4 py-3 text-right backdrop-blur">
               <p className="text-xs uppercase tracking-[0.18em] text-blue-100">
                 Order
               </p>
@@ -213,7 +231,9 @@ const OrderReviewCheckout = ({
             </div>
             <div className="flex justify-between gap-4">
               <span className="text-slate-500">Base translation</span>
-              <span className="font-medium">{formatMoney(baseAmount)}</span>
+              <span className="font-medium">
+                {hasQuote ? formatMoney(baseAmount) : "To be quoted"}
+              </span>
             </div>
           </div>
 
@@ -270,7 +290,9 @@ const OrderReviewCheckout = ({
           <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
             <div className="flex justify-between gap-4 text-sm">
               <span className="text-slate-500">Translation</span>
-              <span className="font-medium">{formatMoney(baseAmount)}</span>
+              <span className="font-medium">
+                {hasQuote ? formatMoney(baseAmount) : "To be quoted"}
+              </span>
             </div>
             {mailingFee > 0 && (
               <div className="flex justify-between gap-4 text-sm">
@@ -286,7 +308,7 @@ const OrderReviewCheckout = ({
             )}
             <div className="flex justify-between gap-4 border-t border-slate-200 pt-3 text-base font-semibold">
               <span>Total</span>
-              <span>{formatMoney(totalAmount)}</span>
+              <span>{hasQuote ? formatMoney(totalAmount) : "Awaiting quote"}</span>
             </div>
           </div>
 
@@ -333,14 +355,19 @@ const OrderReviewCheckout = ({
               <Button
                 className="h-12 w-full rounded-2xl bg-slate-950 text-base font-semibold hover:bg-slate-800"
                 onClick={handlePayment}
-                disabled={isPaying}>
+                disabled={isPaying || !hasQuote}>
                 <CreditCard className="mr-2 h-4 w-4" />
-                {isPaying ? "Processing Payment..." : `Purchase For ${formatMoney(totalAmount)}`}
+                {isPaying
+                  ? "Processing Payment..."
+                  : hasQuote
+                  ? `Purchase For ${formatMoney(totalAmount)}`
+                  : "Purchase Available After Quote"}
               </Button>
               <Button
                 asChild
                 variant="outline"
-                className="h-12 w-full rounded-2xl border-slate-200 text-base font-semibold">
+                className="h-12 w-full rounded-2xl border-slate-200 text-base font-semibold"
+                disabled={!previewUrl}>
                 <a href={previewUrl} target="_blank" rel="noopener noreferrer">
                   Review Preview In New Tab
                 </a>
@@ -351,6 +378,14 @@ const OrderReviewCheckout = ({
           {message && (
             <p className="rounded-2xl bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
               {message}
+            </p>
+          )}
+
+          {!hasQuote && (
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+              This order doesn’t have a saved unlock quote yet. The preview can
+              still be reviewed, but payment should stay disabled until the admin
+              side saves the quoted amount.
             </p>
           )}
 

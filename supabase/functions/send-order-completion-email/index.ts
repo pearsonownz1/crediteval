@@ -79,18 +79,44 @@ serve(async (req) => {
       typeof services._meta === "object" && services._meta
         ? (services._meta as Record<string, unknown>)
         : {};
+    const reviewTokenFromOverride = reviewUrlOverride
+      ? new URL(reviewUrlOverride).searchParams.get("token") || ""
+      : "";
     const reviewToken =
-      typeof orderMeta.reviewToken === "string"
+      reviewTokenFromOverride ||
+      (typeof orderMeta.reviewToken === "string"
         ? orderMeta.reviewToken
         : typeof orderMeta.editToken === "string"
         ? orderMeta.editToken
-        : "";
+        : "");
     const computedReviewUrl = reviewToken
       ? `${siteUrl}/order-review/${orderData.id}?token=${encodeURIComponent(
           reviewToken
         )}`
       : "";
     const reviewUrl = reviewUrlOverride || computedReviewUrl;
+
+    if (
+      reviewTokenFromOverride &&
+      reviewTokenFromOverride !== orderMeta.reviewToken
+    ) {
+      const nextServices = {
+        ...services,
+        _meta: {
+          ...orderMeta,
+          reviewToken: reviewTokenFromOverride,
+        },
+      };
+
+      const { error: persistReviewTokenError } = await supabaseAdmin
+        .from(ordersTable)
+        .update({ services: nextServices })
+        .eq("id", orderId);
+
+      if (persistReviewTokenError) {
+        throw new Error(persistReviewTokenError.message);
+      }
+    }
 
     const documentLinks = (orderData.document_paths || [])
       .map((path: string) => {

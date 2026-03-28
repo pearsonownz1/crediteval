@@ -69,6 +69,8 @@ serve(async (req) => {
     const previewFilePath =
       typeof services.previewFilePath === "string"
         ? services.previewFilePath
+        : Array.isArray(order.document_paths) && order.document_paths.length > 0
+        ? String(order.document_paths[0])
         : "";
     const finalFilePath =
       typeof services.finalFilePath === "string" ? services.finalFilePath : "";
