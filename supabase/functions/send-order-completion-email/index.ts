@@ -45,6 +45,9 @@ serve(async (req) => {
     const requestBody = await req.json();
     const orderId = requestBody?.orderId ? String(requestBody.orderId) : "";
     const notes = requestBody?.notes ? String(requestBody.notes) : "";
+    const reviewUrlOverride = requestBody?.reviewUrl
+      ? String(requestBody.reviewUrl)
+      : "";
 
     if (!orderId) {
       throw new Error("Missing orderId.");
@@ -82,11 +85,12 @@ serve(async (req) => {
         : typeof orderMeta.editToken === "string"
         ? orderMeta.editToken
         : "";
-    const reviewUrl = reviewToken
+    const computedReviewUrl = reviewToken
       ? `${siteUrl}/order-review/${orderData.id}?token=${encodeURIComponent(
           reviewToken
         )}`
       : "";
+    const reviewUrl = reviewUrlOverride || computedReviewUrl;
 
     const documentLinks = (orderData.document_paths || [])
       .map((path: string) => {
@@ -95,10 +99,15 @@ serve(async (req) => {
       })
       .join("");
 
-    const amountText =
+    const totalAmountValue =
       typeof orderData.total_amount === "number"
-        ? `$${(orderData.total_amount / 100).toFixed(2)}`
-        : "your quoted amount";
+        ? orderData.total_amount
+        : typeof orderData.total_amount === "string"
+        ? Number(orderData.total_amount)
+        : NaN;
+    const amountText = Number.isFinite(totalAmountValue)
+      ? `$${(totalAmountValue / 100).toFixed(2)}`
+      : "your quoted amount";
     const serviceType =
       typeof services.type === "string"
         ? services.type.replace(/_/g, " ")
@@ -128,14 +137,14 @@ serve(async (req) => {
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;margin:0 auto;">
           <tr>
             <td style="padding:0 20px;">
-              <div style="background:linear-gradient(135deg,#0f4c81 0%,#1e78c9 55%,#7dc5ff 100%);border-radius:28px;padding:32px 32px 22px;color:#ffffff;box-shadow:0 18px 45px rgba(16,35,63,0.18);">
-                <div style="display:inline-block;padding:8px 14px;border-radius:999px;background:rgba(255,255,255,0.16);font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">
+              <div style="background:#12335b;border-radius:28px;padding:32px 32px 22px;color:#ffffff;box-shadow:0 18px 45px rgba(16,35,63,0.18);">
+                <div style="display:inline-block;padding:8px 14px;border-radius:999px;background:#1d548f;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#ffffff;">
                   CreditEval Preview Ready
                 </div>
                 <h1 style="margin:18px 0 10px;font-size:34px;line-height:1.1;font-weight:800;color:#ffffff;">
                   Review your watermarked translation preview
                 </h1>
-                <p style="margin:0;font-size:17px;line-height:1.7;color:rgba(255,255,255,0.9);max-width:520px;">
+                <p style="margin:0;font-size:17px;line-height:1.7;color:#e8f1ff;max-width:520px;">
                   Hi ${customerName || "there"}, your order is ready. Open your private review page to preview the PDF, confirm delivery options, and unlock the final clean version when you're ready.
                 </p>
               </div>
@@ -176,10 +185,16 @@ serve(async (req) => {
                 ${
                   reviewUrl
                     ? `
-                <div style="text-align:center;margin:26px 0 22px;">
-                  <a href="${reviewUrl}" style="display:inline-block;padding:16px 26px;border-radius:16px;background:linear-gradient(135deg,#0f4c81 0%,#1e78c9 100%);color:#ffffff;text-decoration:none;font-size:16px;font-weight:800;box-shadow:0 14px 28px rgba(30,120,201,0.28);">
+                <div style="margin:26px 0 22px;">
+                  <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;color:#4f6b95;margin-bottom:10px;">Review link</div>
+                  <div style="text-align:center;margin-bottom:12px;">
+                    <a href="${reviewUrl}" style="display:inline-block;padding:16px 26px;border-radius:16px;background:#0f4c81;color:#ffffff;text-decoration:none;font-size:16px;font-weight:800;box-shadow:0 14px 28px rgba(30,120,201,0.28);">
                     Review Preview And Purchase
-                  </a>
+                    </a>
+                  </div>
+                  <div style="padding:14px 16px;border-radius:16px;background:#f7faff;border:1px solid #dbe7f6;font-size:13px;line-height:1.6;word-break:break-all;color:#35527a;">
+                    ${reviewUrl}
+                  </div>
                 </div>
                 `
                     : ""

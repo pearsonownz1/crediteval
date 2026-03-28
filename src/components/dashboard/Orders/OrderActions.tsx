@@ -34,6 +34,11 @@ const DEFAULT_MAIL_FEE = 1500;
 const DEFAULT_INTERNATIONAL_MAIL_FEE = 4500;
 
 export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
+  const [reviewToken] = useState(
+    order.services?._meta?.reviewToken ||
+      order.services?._meta?.editToken ||
+      crypto.randomUUID()
+  );
   const [messageDialogOpen, setMessageDialogOpen] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
@@ -83,6 +88,9 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
         body: {
           orderId: order.id,
           notes: notes || undefined,
+          reviewUrl: `${
+            import.meta.env.VITE_SITE_URL || DEFAULT_SITE_URL
+          }/order-review/${order.id}?token=${reviewToken}`,
         },
       }
     );
@@ -194,8 +202,7 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
         ...(order.services || {}),
         _meta: {
           ...(order.services?._meta || {}),
-          reviewToken:
-            order.services?._meta?.reviewToken || crypto.randomUUID(),
+          reviewToken,
         },
         previewFilePath: previewPaths[0] || order.services?.previewFilePath,
         finalFilePath: finalPaths[0] || order.services?.finalFilePath,
@@ -249,11 +256,7 @@ export const OrderActions: React.FC<OrderActionsProps> = ({ order }) => {
 
   const reviewLink = `${
     import.meta.env.VITE_SITE_URL || DEFAULT_SITE_URL
-  }/order-review/${order.id}?token=${
-    order.services?._meta?.reviewToken ||
-    order.services?._meta?.editToken ||
-    ""
-  }`;
+  }/order-review/${order.id}?token=${reviewToken}`;
 
   return (
     <div className="flex space-x-1" onClick={(e) => e.stopPropagation()}>
