@@ -2,6 +2,13 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { loadStripe } from "@stripe/stripe-js";
 import {
+  RenderPageProps,
+  ScrollMode,
+  SpecialZoomLevel,
+  Viewer,
+  Worker,
+} from "@react-pdf-viewer/core";
+import {
   CardElement,
   Elements,
   useElements,
@@ -24,8 +31,11 @@ import {
   updateOrderServicesWithStatus,
 } from "../utils/order/orderAPI";
 import { Order } from "../types/order";
+import "@react-pdf-viewer/core/lib/styles/index.css";
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+const PDFJS_VERSION = "3.11.174";
+const PDF_WORKER_URL = `https://unpkg.com/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.min.js`;
 const NOTARIZATION_FEE = 2500;
 const EXPRESS_MAIL_FEE = 1500;
 const INTERNATIONAL_MAIL_FEE = 4500;
@@ -38,6 +48,43 @@ const buildWatermarkLabel = (order: Order) => {
   return customerName
     ? `CreditEval Preview • ${customerName} • Order #${order.id}`
     : `CreditEval Preview • Order #${order.id}`;
+};
+
+const WatermarkedPageLayer: React.FC<{
+  renderPageProps: RenderPageProps;
+  watermarkLabel: string;
+}> = ({ renderPageProps, watermarkLabel }) => {
+  useEffect(() => {
+    if (renderPageProps.canvasLayerRendered && renderPageProps.textLayerRendered) {
+      renderPageProps.markRendered(renderPageProps.pageIndex);
+    }
+  }, [
+    renderPageProps.canvasLayerRendered,
+    renderPageProps.pageIndex,
+    renderPageProps.textLayerRendered,
+    renderPageProps,
+  ]);
+
+  return (
+    <>
+      {renderPageProps.canvasLayer.children}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
+        <div
+          className="select-none text-center font-black uppercase leading-[1.12] tracking-[0.22em] text-slate-950/18"
+          style={{
+            fontSize: `${Math.max(1.8, 2.8 * renderPageProps.scale)}rem`,
+            transform: "rotate(-34deg)",
+            transformOrigin: "center",
+          }}>
+          {watermarkLabel.split(" • ").map((line) => (
+            <div key={`${renderPageProps.pageIndex}-${line}`}>{line}</div>
+          ))}
+        </div>
+      </div>
+      {renderPageProps.annotationLayer.children}
+      {renderPageProps.textLayer.children}
+    </>
+  );
 };
 
 const normalizeAmount = (value: number | string | null | undefined) => {
@@ -514,27 +561,23 @@ const OrderReviewPage: React.FC = () => {
             </div>
             <div className="relative min-h-[68vh] bg-[linear-gradient(135deg,#0f172a_0%,#16263d_45%,#1e3a5f_100%)] p-3 sm:p-4 lg:min-h-[72vh]">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.16),_transparent_35%)]" />
-              <div className="relative h-full min-h-[62vh] overflow-hidden rounded-[24px] border border-white/10 bg-white shadow-2xl lg:min-h-[68vh]">
+              <div className="relative h-full min-h-[62vh] overflow-hidden rounded-[24px] border border-white/10 bg-slate-100 shadow-2xl lg:min-h-[68vh]">
                 {previewUrl ? (
-                  <>
-                    <iframe
-                      title="Translation preview"
-                      src={`${previewUrl}#toolbar=1&navpanes=0&view=FitH`}
-                      className="relative z-10 h-full w-full border-0 bg-white"
-                    />
-                    <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
-                      <div className="absolute inset-y-0 left-0 w-20 bg-gradient-to-r from-white/24 to-transparent" />
-                      <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-white/10 to-transparent" />
-                      <div className="absolute inset-0 flex items-center justify-center px-6">
-                        <div className="max-w-[1000px] -rotate-[34deg] select-none text-center text-[34px] font-black uppercase tracking-[0.32em] text-slate-900/16 sm:text-[44px] lg:text-[56px]">
-                          {watermarkLabel}
-                        </div>
-                      </div>
-                      <div className="absolute bottom-6 right-6 rounded-full border border-slate-900/10 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.26em] text-slate-700 shadow-sm backdrop-blur-sm">
-                        Preview Only
-                      </div>
+                  <Worker workerUrl={PDF_WORKER_URL}>
+                    <div className="h-full w-full overflow-hidden">
+                      <Viewer
+                        fileUrl={previewUrl}
+                        defaultScale={SpecialZoomLevel.PageFit}
+                        scrollMode={ScrollMode.Vertical}
+                        renderPage={(renderPageProps) => (
+                          <WatermarkedPageLayer
+                            renderPageProps={renderPageProps}
+                            watermarkLabel={watermarkLabel}
+                          />
+                        )}
+                      />
                     </div>
-                  </>
+                  </Worker>
                 ) : (
                   <div className="flex h-full items-center justify-center p-8 text-center text-slate-500">
                     The preview file has not been uploaded yet. Please check your
