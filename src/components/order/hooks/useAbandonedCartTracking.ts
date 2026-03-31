@@ -36,33 +36,25 @@ export const useAbandonedCartTracking = (
   // Function to send abandoned cart email
   const sendAbandonedCartEmail = useCallback(
     async (currentOrderData: OrderData) => {
-      // Don't send if email already sent for this session
       if (emailSentRef.current) {
-        console.log("Abandoned cart email already sent for this session");
         return;
       }
 
-      // Don't send if no email provided
       if (!currentOrderData.customerInfo?.email) {
-        console.log("No email provided, skipping abandoned cart email");
         return;
       }
 
-      // Don't send if user hasn't filled any meaningful data
       const hasMinimalData =
         currentOrderData.customerInfo.firstName ||
         currentOrderData.customerInfo.lastName ||
         currentOrderData.services?.selectedService;
 
       if (!hasMinimalData) {
-        console.log("Insufficient data to send abandoned cart email");
         return;
       }
 
       try {
-        console.log("Sending abandoned cart email...");
-
-        const { data, error } = await supabase.functions.invoke(
+        const { error } = await supabase.functions.invoke(
           "send-abandoned-cart-email",
           {
             body: {
@@ -73,7 +65,6 @@ export const useAbandonedCartTracking = (
         );
 
         if (!error) {
-          console.log("Abandoned cart email sent successfully:", data);
           emailSentRef.current = true;
         } else {
           console.error("Failed to send abandoned cart email:", error);
@@ -130,12 +121,8 @@ export const useAbandonedCartTracking = (
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        // User switched tabs or minimized window
-        console.log("Page hidden, starting abandoned cart timer");
-        resetTimeout(orderData); // Pass orderData
+        resetTimeout(orderData);
       } else {
-        // User returned to tab
-        console.log("Page visible, resetting abandoned cart timer");
         if (timeoutRef.current) {
           clearTimeout(timeoutRef.current);
         }

@@ -30,10 +30,6 @@ const Login: React.FC = () => {
         throw error;
       }
       setMessage('Login successful! Redirecting...');
-      // Handle successful login, e.g., redirect
-      // You might want to use react-router-dom's useNavigate hook here
-      // after integrating this component into your routing setup.
-      console.log('Login successful');
       navigate('/admin'); // Redirect to admin dashboard
 
     } catch (error: any) {

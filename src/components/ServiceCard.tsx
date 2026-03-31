@@ -25,7 +25,7 @@ const ServiceCard = ({
   description = "This is a description of the service we provide. It includes key benefits and features.",
   expandedContent = "This is additional information about the service that appears when the card is expanded. It can include more details about the process, requirements, or benefits.",
   ctaText = "Get Started",
-  onCtaClick = () => console.log("CTA clicked"),
+  onCtaClick,
 }: ServiceCardProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -73,6 +73,7 @@ const ServiceCard = ({
         <Button
           onClick={onCtaClick}
           className="w-full bg-primary hover:bg-primary/90"
+          disabled={!onCtaClick}
         >
           {ctaText}
         </Button>

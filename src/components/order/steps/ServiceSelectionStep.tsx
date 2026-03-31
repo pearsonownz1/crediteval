@@ -52,9 +52,6 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
             updateData({ type: serviceType });
             if (orderId && orderEditToken) {
               updateOrderServices(orderId, updatedData, orderEditToken)
-                .then(() =>
-                  console.log("Order services updated (Service Type).")
-                )
                 .catch((err) =>
                   console.error(
                     "Failed to update order services (Service Type):",
@@ -216,16 +213,7 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
                 updateData({ evaluationType: "course" });
                 if (orderId && orderEditToken) {
                   const updatedData = { ...data, evaluationType: "course" };
-                  console.log(
-                    "ServiceSelectionStep: Sending updatedData to backend (Evaluation Type - Course):",
-                    updatedData
-                  ); // Debugging
                   updateOrderServices(orderId, updatedData, orderEditToken)
-                    .then(() =>
-                      console.log(
-                        "Order services updated (Evaluation Type - Course)."
-                      )
-                    )
                     .catch((err) =>
                       console.error(
                         "Failed to update order services (Evaluation Type - Course):",
@@ -242,16 +230,7 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
                     updateData({ evaluationType: "course" });
                     if (orderId && orderEditToken) {
                       const updatedData = { ...data, evaluationType: "course" };
-                      console.log(
-                        "ServiceSelectionStep: Sending updatedData to backend (Evaluation Type - Course - Checkbox):",
-                        updatedData
-                      ); // Debugging
                       updateOrderServices(orderId, updatedData, orderEditToken)
-                        .then(() =>
-                          console.log(
-                            "Order services updated (Evaluation Type - Course - Checkbox)."
-                          )
-                        )
                         .catch((err) =>
                           console.error(
                             "Failed to update order services (Evaluation Type - Course - Checkbox):",
@@ -295,16 +274,7 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
                 updateData({ evaluationType: "document" });
                 if (orderId && orderEditToken) {
                   const updatedData = { ...data, evaluationType: "document" };
-                  console.log(
-                    "ServiceSelectionStep: Sending updatedData to backend (Evaluation Type - Document):",
-                    updatedData
-                  ); // Debugging
                   updateOrderServices(orderId, updatedData, orderEditToken)
-                    .then(() =>
-                      console.log(
-                        "Order services updated (Evaluation Type - Document)."
-                      )
-                    )
                     .catch((err) =>
                       console.error(
                         "Failed to update order services (Evaluation Type - Document):",
@@ -324,16 +294,7 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
                         ...data,
                         evaluationType: "document",
                       };
-                      console.log(
-                        "ServiceSelectionStep: Sending updatedData to backend (Evaluation Type - Document - Checkbox):",
-                        updatedData
-                      ); // Debugging
                       updateOrderServices(orderId, updatedData, orderEditToken)
-                        .then(() =>
-                          console.log(
-                            "Order services updated (Evaluation Type - Document - Checkbox)."
-                          )
-                        )
                         .catch((err) =>
                           console.error(
                             "Failed to update order services (Evaluation Type - Document - Checkbox):",
@@ -380,11 +341,7 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
               const updatedData = { ...data, visaType: value };
               updateData({ visaType: value });
               if (orderId && orderEditToken && updatedData.type === "expert") {
-                // Only update if service type is expert
                 updateOrderServices(orderId, updatedData, orderEditToken)
-                  .then(() =>
-                    console.log("Order services updated (Visa Type).")
-                  )
                   .catch((err) =>
                     console.error(
                       "Failed to update order services (Visa Type):",
@@ -419,12 +376,7 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
             }; // Create updatedData
             updateData({ urgency: value as ServiceInfo["urgency"] });
             if (orderId && orderEditToken) {
-              console.log(
-                "ServiceSelectionStep: Sending updatedData to backend (Urgency):",
-                updatedData
-              ); // Debugging
-              updateOrderServices(orderId, updatedData, orderEditToken) // Call updateOrderServices with updatedData
-                .then(() => console.log("Order urgency updated via services."))
+              updateOrderServices(orderId, updatedData, orderEditToken)
                 .catch((err) =>
                   console.error(
                     "Failed to update order urgency via services:",
@@ -461,16 +413,7 @@ export const ServiceSelectionStep: React.FC<ServiceSelectionStepProps> = ({
             };
             updateData({ specialInstructions: e.target.value });
             if (orderId && orderEditToken) {
-              console.log(
-                "ServiceSelectionStep: Sending updatedData to backend (Special Instructions):",
-                updatedData
-              );
               updateOrderServices(orderId, updatedData, orderEditToken)
-                .then(() =>
-                  console.log(
-                    "Order special instructions updated via services."
-                  )
-                )
                 .catch((err) =>
                   console.error(
                     "Failed to update order special instructions via services:",

@@ -10,10 +10,14 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
 import Tracker from '@openreplay/tracker'; // Import OpenReplay Tracker
 import trackerAssist from '@openreplay/tracker-assist'; // Import Assist plugin
-import { TempoDevtools } from "tempo-devtools";
 import { PostHogProvider } from 'posthog-js/react';
+import { publicEnv } from "./lib/publicEnv";
 
-TempoDevtools.init();
+if (import.meta.env.DEV) {
+  void import("tempo-devtools").then(({ TempoDevtools }) => {
+    TempoDevtools.init();
+  });
+}
 
 const tracker = new Tracker({
   projectKey: "mm7loMLeLPc0as2lWG72",
@@ -22,9 +26,7 @@ tracker.use(trackerAssist()); // Use the Assist plugin
 tracker.start();
 
 const basename = import.meta.env.BASE_URL;
-
-// TODO: Replace with your actual publishable key, ideally from environment variables
-const stripePromise = loadStripe("pk_live_5vKOii6RstRUd7bpww7zaSof");
+const stripePromise = loadStripe(publicEnv.stripePublishableKey);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

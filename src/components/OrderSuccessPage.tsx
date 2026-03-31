@@ -3,6 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { CheckCircle } from 'lucide-react';
 import { Button } from './ui/button';
+import { publicEnv } from '@/lib/publicEnv';
 
 // Define gtag function type for TypeScript (if not already globally defined)
 declare global {
@@ -20,14 +21,12 @@ const OrderSuccessPage = () => {
   // --- GA4 Purchase Event Tracking ---
   useEffect(() => {
     if (!isTranslationSubmission && orderId && typeof window.gtag === 'function') {
-      console.log(`Order Success: Found orderId ${orderId}, attempting to fetch details for GA4.`);
-
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-order-details-for-ga?orderId=${orderId}`;
+      const functionUrl = `${publicEnv.supabaseUrl}/functions/v1/get-order-details-for-ga?orderId=${orderId}`;
 
       fetch(functionUrl, {
         method: 'GET', // Use GET as we are retrieving data based on query param
         headers: {
-          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY, // Use anon key for gateway
+          'apikey': publicEnv.supabaseAnonKey, // Use anon key for gateway
           // No Authorization needed if function is set to no-verify-jwt
         },
       })
@@ -40,8 +39,6 @@ const OrderSuccessPage = () => {
         return response.json();
       })
       .then(data => {
-        console.log("GA4 Data Received:", data);
-
         // Validate required fields before sending
         if (!data.transaction_id || !data.value || !data.currency || !data.items) {
             console.error("GA4 data from function is incomplete:", data);
@@ -56,18 +53,10 @@ const OrderSuccessPage = () => {
           currency: data.currency, // Already formatted as uppercase
           items: data.items // Use the simplified items array from function
         });
-
-        console.log("GA4 purchase event fired for order:", data.transaction_id);
       })
       .catch(error => {
         console.error('Error in GA4 purchase tracking fetch/process:', error);
-        // Decide if you want to notify the user or just log the error
       });
-
-    } else if (!isTranslationSubmission && !orderId) {
-        console.warn("Order Success Page: No orderId found in URL for GA4 tracking.");
-    } else if (!isTranslationSubmission && typeof window.gtag !== 'function') {
-        console.warn("Order Success Page: gtag function not found. GA4 event not fired.");
     }
   }, [isTranslationSubmission, orderId]); // Re-run effect if orderId changes (shouldn't normally happen here)
   // --- End GA4 Tracking ---

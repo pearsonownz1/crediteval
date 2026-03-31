@@ -26,16 +26,9 @@ import {
   updateQuoteStatus,
 } from "@/utils/quote/quoteAPI";
 import { createOrderFromQuote } from "@/utils/order/orderAPI";
+import { publicEnv } from "@/lib/publicEnv";
 
-const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
-console.log(
-  "Stripe Publishable Key used:",
-  stripePublishableKey
-    ? `${stripePublishableKey.substring(0, 6)}...`
-    : "MISSING!"
-);
-
-const stripePromise = loadStripe(stripePublishableKey);
+const stripePromise = loadStripe(publicEnv.stripePublishableKey);
 
 // Payment Form Component - This must be inside Elements context
 function PaymentForm({
@@ -114,14 +107,12 @@ function PaymentForm({
         // Create an order from the quote
         try {
           await createOrderFromQuote(quote, paymentIntent.id);
-          console.log("Order created successfully from quote.");
         } catch (orderError) {
           console.error("Failed to create order from quote:", orderError);
-          // Optional: handle this error, e.g., by showing a message to the user
         }
 
         // Call the Supabase function to send email to support
-        const { data, error: sendEmailError } = await supabase.functions.invoke(
+        const { error: sendEmailError } = await supabase.functions.invoke(
           "send-quote-payment-email",
           {
             body: { quoteId: quote.id, paymentIntentId: paymentIntent.id },
@@ -133,8 +124,6 @@ function PaymentForm({
             "Error invoking send-quote-payment-email:",
             sendEmailError
           );
-        } else {
-          console.log("send-quote-payment-email invoked successfully:", data);
         }
 
         setPaymentProcessing(false);
@@ -227,7 +216,6 @@ function PaymentForm({
               },
             }}
             onReady={() => {
-              console.log("CardElement is ready");
               setCardReady(true);
             }}
             onChange={(event) => {
@@ -344,7 +332,7 @@ export function QuotePaymentPage() {
   }, [quoteId, navigate, posthog]);
 
   const handlePaymentSuccess = () => {
-    console.log("Payment successful!");
+    setFetchError(null);
   };
 
   if (loading) {

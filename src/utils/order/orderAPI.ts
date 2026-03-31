@@ -1,5 +1,6 @@
 import { supabase } from "../../lib/supabaseClient";
 import { ordersTable } from "../../lib/ordersTable";
+import { publicEnv } from "../../lib/publicEnv";
 import { CustomerInfo } from "../../types/order/index"; // Corrected import path
 import { Quote } from "@/types/quote";
 
@@ -14,15 +15,13 @@ const generateOrderEditToken = () =>
 const invokeOrderServicesFunction = async (
   payload: Record<string, unknown>
 ) => {
-  const functionUrl = `${
-    import.meta.env.VITE_SUPABASE_URL
-  }/functions/v1/update-order-services`;
+  const functionUrl = `${publicEnv.supabaseUrl}/functions/v1/update-order-services`;
 
   const response = await fetch(functionUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      apikey: publicEnv.supabaseAnonKey,
     },
     body: JSON.stringify(payload),
   });
@@ -123,15 +122,13 @@ export const callPaymentIntent = async (
   amount: number,
   services: any
 ) => {
-  const functionUrl = `${
-    import.meta.env.VITE_SUPABASE_URL
-  }/functions/v1/create-payment-intent`;
+  const functionUrl = `${publicEnv.supabaseUrl}/functions/v1/create-payment-intent`;
 
   const response = await fetch(functionUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      apikey: publicEnv.supabaseAnonKey,
     },
     body: JSON.stringify({
       amount,
@@ -158,12 +155,12 @@ export const callPaymentIntent = async (
 export const sendReceiptEmail = async (orderId: string) => {
   try {
     const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-order-receipt`,
+      `${publicEnv.supabaseUrl}/functions/v1/send-order-receipt`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          apikey: publicEnv.supabaseAnonKey,
         },
         body: JSON.stringify({ orderId }),
       }
@@ -171,8 +168,6 @@ export const sendReceiptEmail = async (orderId: string) => {
 
     if (!response.ok) {
       console.error(`Failed to send receipt email for order ${orderId}`);
-    } else {
-      console.log(`Receipt email request successful for order ${orderId}`);
     }
   } catch (error) {
     console.error(`Error calling send-order-receipt function:`, error);
@@ -220,7 +215,6 @@ export const createOrderFromQuote = async (
     .single();
 
   if (error) {
-    console.error("Error creating order from quote:", error);
     throw error;
   }
 

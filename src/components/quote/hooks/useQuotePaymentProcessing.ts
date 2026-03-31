@@ -68,7 +68,7 @@ export const useQuotePaymentProcessing = () => {
         await updateQuoteStatus(quoteId, "Paid");
 
         // Call the Supabase function to send email to support
-        const { data, error: sendEmailError } = await supabase.functions.invoke(
+        const { error: sendEmailError } = await supabase.functions.invoke(
           "send-quote-payment-email",
           {
             body: { quoteId, paymentIntentId: paymentIntent.id },
@@ -80,9 +80,6 @@ export const useQuotePaymentProcessing = () => {
             "Error invoking send-quote-payment-email:",
             sendEmailError
           );
-          // Optionally, handle this error more gracefully, e.g., log to an error tracking system
-        } else {
-          console.log("send-quote-payment-email invoked successfully:", data);
         }
 
         setPaymentProcessing(false);

@@ -31,9 +31,10 @@ import {
   updateOrderServicesWithStatus,
 } from "../utils/order/orderAPI";
 import { Order } from "../types/order";
+import { publicEnv } from "../lib/publicEnv";
 import "@react-pdf-viewer/core/lib/styles/index.css";
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+const stripePromise = loadStripe(publicEnv.stripePublishableKey);
 const PDFJS_VERSION = "3.11.174";
 const PDF_WORKER_URL = `https://unpkg.com/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.min.js`;
 const NOTARIZATION_FEE = 2500;
@@ -482,15 +483,13 @@ const OrderReviewPage: React.FC = () => {
 
       try {
         setLoading(true);
-        const functionUrl = `${
-          import.meta.env.VITE_SUPABASE_URL
-        }/functions/v1/get-order-review-data?orderId=${encodeURIComponent(
+        const functionUrl = `${publicEnv.supabaseUrl}/functions/v1/get-order-review-data?orderId=${encodeURIComponent(
           orderId
         )}&token=${encodeURIComponent(token)}`;
         const response = await fetch(functionUrl, {
           method: "GET",
           headers: {
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            apikey: publicEnv.supabaseAnonKey,
           },
         });
 

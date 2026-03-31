@@ -4,6 +4,7 @@ import { Progress } from "../../ui/progress";
 import { Upload, FileText } from "lucide-react";
 import { DocumentState } from "../../../types/order/index";
 import { supabase } from "../../../lib/supabaseClient";
+import { publicEnv } from "../../../lib/publicEnv";
 
 interface DocumentUploadStepProps {
   documents: DocumentState[];
@@ -71,17 +72,14 @@ export const DocumentUploadStep: React.FC<DocumentUploadStepProps> = ({
         progress: 100,
       });
 
-      // Update order documents
       try {
-        const functionUrl = `${
-          import.meta.env.VITE_SUPABASE_URL
-        }/functions/v1/update-order-documents`;
+        const functionUrl = `${publicEnv.supabaseUrl}/functions/v1/update-order-documents`;
 
         const response = await fetch(functionUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            apikey: publicEnv.supabaseAnonKey,
           },
           body: JSON.stringify({
             orderId: String(orderId),
@@ -99,8 +97,6 @@ export const DocumentUploadStep: React.FC<DocumentUploadStepProps> = ({
               `Function call failed with status ${response.status}`
           );
         }
-
-        console.log(`Document path updated successfully for order ${orderId}`);
       } catch (functionError: any) {
         console.error(
           "Error calling update-order-documents function:",

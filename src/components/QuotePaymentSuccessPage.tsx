@@ -1,17 +1,9 @@
-import { useEffect } from "react";
 import { useLocation, Link } from "react-router-dom";
 
 const QuotePaymentSuccessPage = () => {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const quoteId = params.get("quoteId");
-
-  useEffect(() => {
-    // TODO: Add tracking for quote payment success
-    if (quoteId) {
-      console.log(`Quote payment successful for quoteId: ${quoteId}`);
-    }
-  }, [quoteId]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">

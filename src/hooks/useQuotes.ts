@@ -8,11 +8,9 @@ export const useQuotes = () => {
   const [error, setError] = useState<string | null>(null);
 
   const fetchQuotes = async () => {
-    console.log("Attempting to fetch quotes...");
     setLoading(true);
     setError(null);
     try {
-      console.log("Executing Supabase query for quotes...");
       const { data, error: fetchError } = await supabase
         .from("quotes")
         .select(
@@ -20,21 +18,14 @@ export const useQuotes = () => {
         )
         .order("created_at", { ascending: false });
 
-      console.log("Supabase query finished. Error:", fetchError, "Data:", data);
-
       if (fetchError) {
-        console.error("Supabase fetch error object:", fetchError);
         throw fetchError;
       }
       setQuotes(data || []);
-      console.log(`Successfully fetched ${data?.length || 0} quotes.`);
     } catch (err: any) {
-      console.error("Caught error during fetchQuotes:", err);
+      console.error("Error fetching quotes:", err);
       setError(err.details || err.message || "Failed to fetch quotes.");
     } finally {
-      console.log(
-        "Executing finally block for fetchQuotes, setting loading to false."
-      );
       setLoading(false);
     }
   };

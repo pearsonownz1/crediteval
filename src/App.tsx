@@ -1,5 +1,5 @@
 import { Suspense, useEffect } from "react"; // Import useEffect
-import { useRoutes, Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import { usePostHog } from "posthog-js/react"; // Import usePostHog
 import Layout from "./components/Layout"; // Import the Layout component
 import Home from "./components/home";
@@ -35,7 +35,6 @@ import { OrderProvider } from "./contexts/OrderContext"; // Import the OrderProv
 import { QuoteDetailsPage } from "./pages/QuoteDetailsPage"; // Import QuoteDetailsPage
 import FunnelDashboard from "./pages/FunnelDashboard";
 import { Toaster } from "@/components/ui/toaster"; // Import Toaster
-import routes from "tempo-routes";
 
 function App() {
   const posthog = usePostHog(); // Get PostHog instance
@@ -253,7 +252,6 @@ function App() {
             {/* Add other protected routes here */}
           </Route>
         </Routes>
-        {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
         <Toaster />
       </OrderProvider>{" "}
       {/* Close OrderProvider */}

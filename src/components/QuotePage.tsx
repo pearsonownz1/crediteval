@@ -11,7 +11,7 @@ import {
   CardFooter,
 } from "./ui/card";
 import { Upload, FileText, ArrowLeft, Check, Languages } from "lucide-react"; // Added Check, Languages
-import { supabase } from "../lib/supabaseClient"; // Assuming you might need Supabase later for uploads/submissions
+import { supabase } from "../lib/supabaseClient";
 import {
   Select,
   SelectContent,
@@ -61,8 +61,6 @@ const QuotePage = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Removed handleServiceSelect - now handled by dropdown
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { id, value } = e.target;
     setFormData((prevData) => ({
@@ -99,7 +97,6 @@ const QuotePage = () => {
     });
   };
 
-  // Actual Supabase Storage upload function
   const uploadFile = async (file: File, id: string) => {
     updateDocumentStatusById(id, { status: "uploading", progress: 0 });
 
@@ -140,7 +137,6 @@ const QuotePage = () => {
           path: data.path,
           progress: 100,
         });
-        console.log(`Upload success for ${file.name}, path: ${data.path}`);
       } else {
         // Handle unexpected case where data is null without error
         console.error(
@@ -230,7 +226,6 @@ const QuotePage = () => {
 
     // If the file was successfully uploaded, attempt to delete from storage
     if (docToRemove && docToRemove.status === "success" && docToRemove.path) {
-      console.log(`Attempting to delete ${docToRemove.path} from storage...`);
       try {
         const { error } = await supabase.storage
           .from("documents") // Use the existing 'documents' bucket
@@ -242,8 +237,6 @@ const QuotePage = () => {
             error
           );
           // Optional: Add user feedback about failed deletion?
-        } else {
-          console.log(`Successfully deleted ${docToRemove.path} from storage.`);
         }
       } catch (err) {
         console.error(
@@ -332,10 +325,6 @@ const QuotePage = () => {
       return;
     }
 
-    console.log("Submitting Quote Request:", quoteRequestData);
-
-    // --- TODO: Replace with actual submission logic ---
-    // --- Invoke Supabase Function ---
     try {
       const { data, error } = await supabase.functions.invoke(
         "send-quote-request",
@@ -356,10 +345,6 @@ const QuotePage = () => {
         throw new Error(data.error);
       }
 
-      console.log(
-        "Quote request submitted and function invoked successfully:",
-        data
-      );
       setSubmitStatus("success");
     } catch (error: any) {
       console.error("Error submitting quote request:", error);
@@ -368,7 +353,6 @@ const QuotePage = () => {
     } finally {
       setIsSubmitting(false);
     }
-    // --- End TODO ---
   };
 
   // Removed handleBack - no steps to go back to

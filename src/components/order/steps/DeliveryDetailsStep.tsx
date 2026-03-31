@@ -26,10 +26,8 @@ export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
   orderId, // Destructure orderId
   orderEditToken,
 }) => {
-  // Defensive check: If data is null or undefined, return null or a loading indicator
   if (!data) {
-    console.warn("DeliveryDetailsStep received undefined or null data prop.");
-    return null; // Or a loading spinner, or an error message
+    return null;
   }
 
   return (
@@ -50,9 +48,7 @@ export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
             }; // Create updatedData
             updateData({ deliveryType: value as ServiceInfo["deliveryType"] });
             if (orderId && orderEditToken) {
-              updateOrderServices(orderId, updatedData, orderEditToken) // Call updateOrderServices with updatedData
-                .then(() => console.log("Order delivery type updated."))
-                .catch((err) =>
+              updateOrderServices(orderId, updatedData, orderEditToken).catch((err) =>
                   console.error("Failed to update order delivery type:", err)
                 );
             }
@@ -91,7 +87,6 @@ export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
                 updateData({ shippingInfo: updatedShippingInfo });
                 if (orderId && orderEditToken) {
                   updateOrderServices(orderId, updatedData, orderEditToken)
-                    .then(() => console.log("Order shipping country updated."))
                     .catch((err) =>
                       console.error(
                         "Failed to update order shipping country:",
@@ -132,7 +127,6 @@ export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
                 updateData({ shippingInfo: updatedShippingInfo });
                 if (orderId && orderEditToken) {
                   updateOrderServices(orderId, updatedData, orderEditToken)
-                    .then(() => console.log("Order shipping address updated."))
                     .catch((err) =>
                       console.error(
                         "Failed to update order shipping address:",
@@ -165,9 +159,6 @@ export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
                 updateData({ shippingInfo: updatedShippingInfo });
                 if (orderId && orderEditToken) {
                   updateOrderServices(orderId, updatedData, orderEditToken)
-                    .then(() =>
-                      console.log("Order shipping apartment updated.")
-                    )
                     .catch((err) =>
                       console.error(
                         "Failed to update order shipping apartment:",
@@ -198,7 +189,6 @@ export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
                   updateData({ shippingInfo: updatedShippingInfo });
                   if (orderId && orderEditToken) {
                     updateOrderServices(orderId, updatedData, orderEditToken)
-                      .then(() => console.log("Order shipping city updated."))
                       .catch((err) =>
                         console.error(
                           "Failed to update order shipping city:",
@@ -228,7 +218,6 @@ export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
                   updateData({ shippingInfo: updatedShippingInfo });
                   if (orderId && orderEditToken) {
                     updateOrderServices(orderId, updatedData, orderEditToken)
-                      .then(() => console.log("Order shipping state updated."))
                       .catch((err) =>
                         console.error(
                           "Failed to update order shipping state:",
@@ -258,7 +247,6 @@ export const DeliveryDetailsStep: React.FC<DeliveryDetailsStepProps> = ({
                   updateData({ shippingInfo: updatedShippingInfo });
                   if (orderId && orderEditToken) {
                     updateOrderServices(orderId, updatedData, orderEditToken)
-                      .then(() => console.log("Order shipping zip updated."))
                       .catch((err) =>
                         console.error(
                           "Failed to update order shipping zip:",

@@ -15,10 +15,7 @@ export interface GAOrderData {
 
 export const trackGA4Event = (eventName: string, parameters: any) => {
   if (typeof window !== "undefined" && window.gtag) {
-    console.log(`Tracking GA4 event: ${eventName}`, parameters);
     window.gtag("event", eventName, parameters);
-  } else {
-    console.warn("GA4 gtag not available");
   }
 };
 

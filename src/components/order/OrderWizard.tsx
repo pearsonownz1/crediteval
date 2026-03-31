@@ -271,30 +271,19 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
   useEffect(() => {
     return () => {
       stopTracking();
-      console.log("OrderWizard: useEffect cleanup - stopTracking called.");
     };
   }, [stopTracking]);
 
   const handleNext = async () => {
-    console.log(
-      `OrderWizard: handleNext called. Current step: ${currentStep}, Order ID: ${orderId}`
-    );
     setError(null);
 
     // Step 0: Save Customer Info or proceed if order already exists
     if (currentStep === 0) {
       if (!orderId) {
-        console.log(
-          "OrderWizard: handleNext - currentStep is 0 and no orderId. Attempting to create new order."
-        );
         // Only create order if it doesn't already exist (i.e., not resumed)
         const validationError = validateCustomerInfo(orderData.customerInfo);
         if (validationError) {
           setError(validationError);
-          console.log(
-            "OrderWizard: handleNext - Validation error:",
-            validationError
-          );
           return;
         }
 
@@ -306,35 +295,14 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
           if (newOrderId) {
             setOrderId(newOrderId);
             setOrderEditToken(editToken);
-            console.log(
-              "OrderWizard: handleNext - New order created with ID:",
-              newOrderId
-            );
 
-            // Track checkout started with GA4
-            console.log(
-              "OrderWizard: orderData before calculatePrice:",
-              orderData
-            );
-            console.log(
-              "OrderWizard: orderData.services before calculatePrice:",
-              orderData.services
-            );
-
-            // Ensure orderData.services is not undefined before passing to calculatePrice
             const servicesToCalculate =
               orderData.services || initialOrderData.services;
             const calculatedPrice = calculatePrice(servicesToCalculate);
             trackCheckoutStarted(orderData, newOrderId, calculatedPrice);
 
             setCurrentStep(currentStep + 1);
-            console.log(
-              `OrderWizard: handleNext - Moving to next step: ${
-                currentStep + 1
-              }`
-            );
 
-            // Mark as active since user is progressing through the form
             markAsActive(orderData);
           } else {
             throw new Error("Failed to create order or retrieve ID.");
@@ -348,19 +316,12 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
           setIsSubmitting(false);
         }
       } else {
-        console.log(
-          "OrderWizard: handleNext - currentStep is 0 and orderId exists. Skipping createOrder, moving to next step."
-        );
-        // If orderId exists, just move to the next step
         setCurrentStep(currentStep + 1);
         markAsActive(orderData);
       }
     }
     // Final Step: Submit request (payment happens later after preview)
     else if (currentStep === totalSteps - 1) {
-      console.log(
-        "OrderWizard: handleNext - currentStep is final step. Submitting request."
-      );
       if (!orderId) {
         setError("Missing order ID. Please restart your request.");
         return;
@@ -406,30 +367,17 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
     }
     // Other Steps: Just move forward
     else if (currentStep < totalSteps - 1) {
-      console.log(
-        `OrderWizard: handleNext - Moving to next step: ${currentStep + 1}`
-      );
       setCurrentStep(currentStep + 1);
 
-      // Mark as active since user is progressing
       markAsActive(orderData);
     }
   };
 
   const handleBack = () => {
-    console.log(`OrderWizard: handleBack called. Current step: ${currentStep}`);
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
-      console.log(
-        `OrderWizard: handleBack - Moving to previous step: ${currentStep - 1}`
-      );
 
-      // Mark as active since user is interacting
       markAsActive(orderData);
-    } else {
-      console.log(
-        "OrderWizard: handleBack - Already at first step (0), cannot go back."
-      );
     }
   };
 
@@ -441,7 +389,6 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
             data={orderData.customerInfo}
             updateData={(data) => {
               updateOrderData("customerInfo", data);
-              // Mark as active when user updates data
               markAsActive(orderData);
             }}
             error={error}
@@ -454,13 +401,11 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
             serviceData={orderData.services}
             updateServiceData={(data) => {
               updateOrderData("services", data);
-              // Mark as active when user updates data
               markAsActive(orderData);
             }}
             documents={orderData.documents}
             updateDocuments={(docs) => {
               updateDocuments(docs);
-              // Mark as active when user updates data
               markAsActive(orderData);
             }}
             orderId={orderId}
@@ -473,7 +418,6 @@ const OrderWizard: React.FC<OrderWizardProps> = ({
             data={orderData.services}
             updateData={(data) => {
               updateOrderData("services", data);
-              // Mark as active when user updates data
               markAsActive(orderData);
             }}
             orderId={orderId} // Pass orderId here

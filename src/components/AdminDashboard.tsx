@@ -106,19 +106,6 @@ const AdminDashboard = () => {
         .order("created_at", { ascending: false });
       if (fetchError) throw fetchError;
       setOrders(data || []);
-      // Log the first few orders to inspect total_amount
-      if (data && data.length > 0) {
-        console.log("Fetched Orders Data Sample (first 3):");
-        data.slice(0, 3).forEach((order, index) => {
-          console.log(
-            `Order ${index + 1} ID: ${order.id}, Total Amount: ${
-              order.total_amount
-            }, Type: ${typeof order.total_amount}`
-          );
-        });
-      } else {
-        console.log("No orders data fetched.");
-      }
     } catch (err: any) {
       console.error("Error fetching orders:", err);
       setErrorOrders(err.details || err.message || "Failed to fetch orders.");
@@ -128,35 +115,24 @@ const AdminDashboard = () => {
   };
 
   const fetchQuotes = async () => {
-    console.log("Attempting to fetch quotes..."); // Log start
     setLoadingQuotes(true);
     setErrorQuotes(null);
     try {
-      console.log("Executing Supabase query for quotes..."); // Log before query
-      // *** ASSUMPTION: Table name is 'quotes' ***
-      // Select only columns that exist in the corrected quotes table schema
       const { data, error: fetchError } = await supabase
         .from("quotes")
         .select(
           "id, name, email, service_type, price, status, created_at, expires_at, staff_id"
-        ) // Removed phone, corrected columns
+        )
         .order("created_at", { ascending: false });
 
-      console.log("Supabase query finished. Error:", fetchError, "Data:", data); // Log result
-
       if (fetchError) {
-        console.error("Supabase fetch error object:", fetchError); // Log the specific error
         throw fetchError;
       }
       setQuotes(data || []);
-      console.log(`Successfully fetched ${data?.length || 0} quotes.`); // Log success
     } catch (err: any) {
-      console.error("Caught error during fetchQuotes:", err); // Log caught error
+      console.error("Error fetching quotes:", err);
       setErrorQuotes(err.details || err.message || "Failed to fetch quotes.");
     } finally {
-      console.log(
-        "Executing finally block for fetchQuotes, setting loading to false."
-      ); // Log finally
       setLoadingQuotes(false);
     }
   };
@@ -236,7 +212,6 @@ const AdminDashboard = () => {
     setIsDeletingSelectedQuotes(true);
     setErrorQuotes(null);
     try {
-      // *** ASSUMPTION: Table name is 'quotes' ***
       const { error: deleteError } = await supabase
         .from("quotes")
         .delete()

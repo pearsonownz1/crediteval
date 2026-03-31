@@ -29,13 +29,6 @@ export const callQuotePaymentIntent = async (
   quoteId: string,
   amount: number
 ) => {
-  console.log("DEBUG: Calling payment intent function");
-  console.log("DEBUG: Quote ID:", quoteId);
-  console.log("DEBUG: Amount:", amount);
-
-  // Remove session check for anonymous quote payments
-  // Quote payments should work without user authentication
-
   try {
     const { data, error } = await supabase.functions.invoke(
       "create-quote-payment-intent",
@@ -48,10 +41,7 @@ export const callQuotePaymentIntent = async (
       }
     );
 
-    console.log("DEBUG: Function invoke result:", { data, error });
-
     if (error) {
-      console.error("DEBUG: Supabase function error:", error);
       throw new Error(error.message || "Failed to create payment intent");
     }
 
@@ -60,9 +50,6 @@ export const callQuotePaymentIntent = async (
       error: null,
     };
   } catch (error: any) {
-    console.error("DEBUG: callQuotePaymentIntent error:", error);
-
-    // Return error in expected format
     return {
       clientSecret: null,
       error: error.message || "Failed to create payment intent",
