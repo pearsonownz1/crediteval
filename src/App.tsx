@@ -226,9 +226,9 @@ function App() {
               </Layout>
             }
           />
-          <Route path="/dashboard" element={<FunnelDashboard />} />
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>
+            <Route path="/dashboard" element={<FunnelDashboard />} />
             <Route
               path="/order"
               element={

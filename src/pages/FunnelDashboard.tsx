@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Temperature = "cold" | "warm" | "hot";
 type Stage =
@@ -76,7 +77,6 @@ type Opportunity = {
 };
 
 const STORAGE_KEY = "crediteval-funnel-dashboard:v2";
-const AUTH_KEY = "crediteval-funnel-dashboard:auth";
 const STAGES: Stage[] = [
   "New Lead",
   "Proposal",
@@ -599,7 +599,7 @@ function DealCard({
 }
 
 export default function FunnelDashboard() {
-  const [authed, setAuthed] = useState(false);
+  const { user, loading } = useAuth();
   const [hydrated, setHydrated] = useState(false);
   const [opportunities, setOpportunities] = useState<Opportunity[]>(seedData);
   const [selectedStage, setSelectedStage] = useState<Stage | "All">("All");
@@ -612,9 +612,7 @@ export default function FunnelDashboard() {
 
   useEffect(() => {
     setHydrated(true);
-    const savedAuth = window.localStorage.getItem(AUTH_KEY);
     const savedDeals = window.localStorage.getItem(STORAGE_KEY);
-    if (savedAuth === "true") setAuthed(true);
     if (savedDeals) setOpportunities(JSON.parse(savedDeals));
   }, []);
 
@@ -703,7 +701,15 @@ export default function FunnelDashboard() {
     setEditing(null);
   };
 
-  if (!authed) {
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-[#07111d] text-white flex items-center justify-center">
+        Loading dashboard…
+      </main>
+    );
+  }
+
+  if (!user) {
     return (
       <main className="min-h-screen bg-[#07111d] text-white">
         <div className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-6 py-16">
@@ -713,11 +719,10 @@ export default function FunnelDashboard() {
                 <Target className="h-3.5 w-3.5" /> Crediteval Dashboard
               </span>
               <h1 className="mt-6 max-w-2xl text-4xl font-semibold tracking-tight text-white lg:text-5xl">
-                A lean revenue cockpit for managing funnel health without swimming in CRM sludge.
+                Real dashboard. Real auth. Less fake wizardry.
               </h1>
               <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300">
-                Drag opportunities between stages, track live KPIs, watch weighted vs committed revenue,
-                and export a clean summary for leadership.
+                Sign in with your Supabase account to access the revenue dashboard and funnel workspace.
               </p>
             </section>
             <section className="p-10 lg:p-14">
@@ -727,22 +732,14 @@ export default function FunnelDashboard() {
                     <Lock className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-sm text-slate-400">Local MVP access</p>
+                    <p className="text-sm text-slate-400">Supabase access required</p>
                     <h2 className="text-xl font-semibold text-white">Sign in</h2>
                   </div>
                 </div>
                 <div className="mt-8 space-y-4">
-                  <input readOnly value="guy@crediteval.com" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" />
-                  <input readOnly value="••••••••" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" />
-                  <button
-                    onClick={() => {
-                      window.localStorage.setItem(AUTH_KEY, "true");
-                      setAuthed(true);
-                    }}
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
-                  >
+                  <a href="/login" className="flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-100">
                     Enter dashboard <ArrowRight className="h-4 w-4" />
-                  </button>
+                  </a>
                 </div>
               </div>
             </section>
