@@ -16,6 +16,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import QuotePage from "./components/QuotePage"; // Import QuotePage
 // import OrderWizard from "./pages/OrderWizard";
 import OrderWizard from "./components/order/OrderWizard";
+import OrderWizardV2 from "./components/order/OrderWizardV2";
 import OrderWizardConciergeVariant from "./components/order/OrderWizardConciergeVariant";
 import OrderSuccessPage from "./components/OrderSuccessPage"; // Import OrderSuccessPage
 import PricingPage from "./components/PricingPage"; // Import PricingPage
@@ -204,6 +205,14 @@ function App() {
             element={
               <Layout>
                 <OrderWizardConciergeVariant />
+              </Layout>
+            }
+          />
+          <Route
+            path="/order2"
+            element={
+              <Layout>
+                <OrderWizardV2 />
               </Layout>
             }
           />
