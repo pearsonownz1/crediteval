@@ -33,6 +33,7 @@ import { PaymentSuccessPage } from "./components/PaymentSuccessPage"; // Import 
 import OrderReviewPage from "./components/OrderReviewPage";
 import { OrderProvider } from "./contexts/OrderContext"; // Import the OrderProvider
 import { QuoteDetailsPage } from "./pages/QuoteDetailsPage"; // Import QuoteDetailsPage
+import FunnelDashboard from "./pages/FunnelDashboard";
 import { Toaster } from "@/components/ui/toaster"; // Import Toaster
 import routes from "tempo-routes";
 
@@ -225,6 +226,7 @@ function App() {
               </Layout>
             }
           />
+          <Route path="/dashboard" element={<FunnelDashboard />} />
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>
             <Route
