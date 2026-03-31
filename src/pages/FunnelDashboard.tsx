@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabaseClient";
 
 type Temperature = "cold" | "warm" | "hot";
 type Stage =
@@ -76,7 +77,6 @@ type Opportunity = {
   closedWonReason: string;
 };
 
-const STORAGE_KEY = "crediteval-funnel-dashboard:v2";
 const STAGES: Stage[] = [
   "New Lead",
   "Proposal",
@@ -276,7 +276,7 @@ const seedData: Opportunity[] = [
 const emptyOpportunity = (): Opportunity => {
   const today = new Date().toISOString().slice(0, 10);
   return {
-    id: `opportunity-${Date.now()}`,
+    id: crypto.randomUUID(),
     company: "",
     title: "",
     contact: "",
@@ -297,6 +297,72 @@ const emptyOpportunity = (): Opportunity => {
     closedWonReason: "",
   };
 };
+
+type OpportunityRow = {
+  id: string;
+  company: string;
+  title: string;
+  contact: string | null;
+  contact_email: string | null;
+  owner: string | null;
+  temperature: Temperature;
+  probability: number;
+  expected_close_date: string | null;
+  created_date: string;
+  last_activity_date: string;
+  notes: string;
+  phase: Stage;
+  source: string;
+  monthly_revenue_potential: number;
+  tags: string[] | null;
+  competitor: string;
+  closed_lost_reason: string;
+  closed_won_reason: string;
+};
+
+const mapRowToOpportunity = (row: OpportunityRow): Opportunity => ({
+  id: row.id,
+  company: row.company,
+  title: row.title,
+  contact: row.contact ?? "",
+  contactEmail: row.contact_email ?? "",
+  owner: row.owner ?? "",
+  temperature: row.temperature,
+  probability: row.probability,
+  expectedCloseDate: row.expected_close_date ?? row.created_date,
+  createdDate: row.created_date,
+  lastActivityDate: row.last_activity_date,
+  notes: row.notes,
+  phase: row.phase,
+  source: row.source,
+  monthlyRevenuePotential: Number(row.monthly_revenue_potential ?? 0),
+  tags: row.tags ?? [],
+  competitor: row.competitor ?? "",
+  closedLostReason: row.closed_lost_reason ?? "",
+  closedWonReason: row.closed_won_reason ?? "",
+});
+
+const mapOpportunityToRow = (opportunity: Opportunity) => ({
+  id: opportunity.id,
+  company: opportunity.company,
+  title: opportunity.title,
+  contact: opportunity.contact || null,
+  contact_email: opportunity.contactEmail || null,
+  owner: opportunity.owner || null,
+  temperature: opportunity.temperature,
+  probability: opportunity.probability,
+  expected_close_date: opportunity.expectedCloseDate || null,
+  created_date: opportunity.createdDate,
+  last_activity_date: opportunity.lastActivityDate,
+  notes: opportunity.notes,
+  phase: opportunity.phase,
+  source: opportunity.source,
+  monthly_revenue_potential: opportunity.monthlyRevenuePotential,
+  tags: opportunity.tags,
+  competitor: opportunity.competitor,
+  closed_lost_reason: opportunity.closedLostReason,
+  closed_won_reason: opportunity.closedWonReason,
+});
 
 const formatMoney = (value: number) =>
   new Intl.NumberFormat("en-US", {
@@ -601,7 +667,7 @@ function DealCard({
 export default function FunnelDashboard() {
   const { user, loading } = useAuth();
   const [hydrated, setHydrated] = useState(false);
-  const [opportunities, setOpportunities] = useState<Opportunity[]>(seedData);
+  const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [selectedStage, setSelectedStage] = useState<Stage | "All">("All");
   const [selectedTemp, setSelectedTemp] = useState<Temperature | "all">("all");
   const [search, setSearch] = useState("");
@@ -609,17 +675,49 @@ export default function FunnelDashboard() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<Opportunity | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     setHydrated(true);
-    const savedDeals = window.localStorage.getItem(STORAGE_KEY);
-    if (savedDeals) setOpportunities(JSON.parse(savedDeals));
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(opportunities));
-  }, [hydrated, opportunities]);
+    if (!hydrated || !user) return;
+
+    const loadOpportunities = async () => {
+      setLoadError(null);
+      const { data, error } = await supabase
+        .from("funnel_opportunities")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        setLoadError(error.message);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        const seedRows = seedData.map(mapOpportunityToRow);
+        const { data: inserted, error: seedError } = await supabase
+          .from("funnel_opportunities")
+          .insert(seedRows)
+          .select("*");
+
+        if (seedError) {
+          setLoadError(seedError.message);
+          return;
+        }
+
+        setOpportunities((inserted as OpportunityRow[]).map(mapRowToOpportunity));
+        return;
+      }
+
+      setOpportunities((data as OpportunityRow[]).map(mapRowToOpportunity));
+    };
+
+    void loadOpportunities();
+  }, [hydrated, user]);
 
   const filteredOpportunities = useMemo(() => {
     const query = search.toLowerCase();
@@ -655,26 +753,44 @@ export default function FunnelDashboard() {
     [filteredOpportunities],
   );
 
-  const handleDrop = (stage: Stage) => {
+  const handleDrop = async (stage: Stage) => {
     if (!draggingId) return;
+
+    const currentOpportunity = opportunities.find((opportunity) => opportunity.id === draggingId);
+    if (!currentOpportunity) return;
+
+    const updatedOpportunity: Opportunity = {
+      ...currentOpportunity,
+      phase: stage,
+      probability:
+        stage === currentOpportunity.phase
+          ? currentOpportunity.probability
+          : stageProbabilities[stage],
+      lastActivityDate: new Date().toISOString().slice(0, 10),
+      closedLostReason: stage === "Closed Lost" ? currentOpportunity.closedLostReason : "",
+      closedWonReason: stage === "Closed Won" ? currentOpportunity.closedWonReason : "",
+    };
+
     setOpportunities((current) =>
       current.map((opportunity) =>
-        opportunity.id === draggingId
-          ? {
-              ...opportunity,
-              phase: stage,
-              probability:
-                stage === opportunity.phase
-                  ? opportunity.probability
-                  : stageProbabilities[stage],
-              lastActivityDate: new Date().toISOString().slice(0, 10),
-              closedLostReason: stage === "Closed Lost" ? opportunity.closedLostReason : "",
-              closedWonReason: stage === "Closed Won" ? opportunity.closedWonReason : "",
-            }
-          : opportunity,
+        opportunity.id === draggingId ? updatedOpportunity : opportunity,
       ),
     );
     setDraggingId(null);
+
+    const { error } = await supabase
+      .from("funnel_opportunities")
+      .update(mapOpportunityToRow(updatedOpportunity))
+      .eq("id", draggingId);
+
+    if (error) {
+      setLoadError(error.message);
+      setOpportunities((current) =>
+        current.map((opportunity) =>
+          opportunity.id === currentOpportunity.id ? currentOpportunity : opportunity,
+        ),
+      );
+    }
   };
 
   const openEditor = (opportunity?: Opportunity) => {
@@ -682,26 +798,67 @@ export default function FunnelDashboard() {
     setEditorOpen(true);
   };
 
-  const saveOpportunity = () => {
+  const saveOpportunity = async () => {
     if (!editing) return;
+    setIsSaving(true);
+    setLoadError(null);
+
+    const exists = opportunities.some((opportunity) => opportunity.id === editing.id);
+    const { data, error } = exists
+      ? await supabase
+          .from("funnel_opportunities")
+          .update(mapOpportunityToRow(editing))
+          .eq("id", editing.id)
+          .select("*")
+          .single()
+      : await supabase
+          .from("funnel_opportunities")
+          .insert(mapOpportunityToRow(editing))
+          .select("*")
+          .single();
+
+    setIsSaving(false);
+
+    if (error || !data) {
+      setLoadError(error?.message ?? "Failed to save opportunity");
+      return;
+    }
+
+    const savedOpportunity = mapRowToOpportunity(data as OpportunityRow);
     setOpportunities((current) => {
-      const exists = current.some((opportunity) => opportunity.id === editing.id);
-      return exists
-        ? current.map((opportunity) => (opportunity.id === editing.id ? editing : opportunity))
-        : [editing, ...current];
+      const alreadyExists = current.some((opportunity) => opportunity.id === savedOpportunity.id);
+      return alreadyExists
+        ? current.map((opportunity) =>
+            opportunity.id === savedOpportunity.id ? savedOpportunity : opportunity,
+          )
+        : [savedOpportunity, ...current];
     });
     setEditorOpen(false);
     setEditing(null);
   };
 
-  const deleteOpportunity = () => {
+  const deleteOpportunity = async () => {
     if (!editing) return;
-    setOpportunities((current) => current.filter((opportunity) => opportunity.id !== editing.id));
+    setIsSaving(true);
+    setLoadError(null);
+    const deletingId = editing.id;
+    const { error } = await supabase
+      .from("funnel_opportunities")
+      .delete()
+      .eq("id", deletingId);
+    setIsSaving(false);
+
+    if (error) {
+      setLoadError(error.message);
+      return;
+    }
+
+    setOpportunities((current) => current.filter((opportunity) => opportunity.id !== deletingId));
     setEditorOpen(false);
     setEditing(null);
   };
 
-  if (loading) {
+  if (loading || (user && !hydrated)) {
     return (
       <main className="min-h-screen bg-[#07111d] text-white flex items-center justify-center">
         Loading dashboard…
@@ -777,6 +934,12 @@ export default function FunnelDashboard() {
               ) : null}
             </div>
           </header>
+
+          {loadError ? (
+            <div className="mt-6 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+              {loadError}
+            </div>
+          ) : null}
 
           <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <StatCard label="Total pipeline" value={formatCompactMoney(metrics.totalPipeline)} meta="Annualized from MRR" icon={<LayoutDashboard className="h-4 w-4" />} />
@@ -1024,8 +1187,8 @@ export default function FunnelDashboard() {
             </label>
 
             <div className="mt-6 flex items-center justify-between gap-3">
-              <button onClick={deleteOpportunity} className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-medium text-rose-200">Delete</button>
-              <button onClick={saveOpportunity} className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-900">Save opportunity</button>
+              <button onClick={deleteOpportunity} disabled={isSaving} className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-medium text-rose-200 disabled:opacity-50">Delete</button>
+              <button onClick={saveOpportunity} disabled={isSaving} className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-900 disabled:opacity-50">{isSaving ? "Saving..." : "Save opportunity"}</button>
             </div>
           </div>
         </div>
