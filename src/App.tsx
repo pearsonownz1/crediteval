@@ -36,6 +36,7 @@ import OrderReviewPage from "./components/OrderReviewPage";
 import { OrderProvider } from "./contexts/OrderContext"; // Import the OrderProvider
 import { QuoteDetailsPage } from "./pages/QuoteDetailsPage"; // Import QuoteDetailsPage
 import FunnelDashboard from "./pages/FunnelDashboard";
+import PdfWorkspacePage from "./pages/PdfWorkspacePage";
 import { Toaster } from "@/components/ui/toaster"; // Import Toaster
 
 function App() {
@@ -68,6 +69,14 @@ function App() {
             element={
               <Layout>
                 <TranslationServices />
+              </Layout>
+            }
+          />
+          <Route
+            path="/pdf"
+            element={
+              <Layout>
+                <PdfWorkspacePage />
               </Layout>
             }
           />
