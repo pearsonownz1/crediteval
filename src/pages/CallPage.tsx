@@ -1,8 +1,11 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
   Camera,
   CameraOff,
+  Copy,
+  ExternalLink,
   Mic,
   MicOff,
   Phone,
@@ -18,7 +21,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { DEFAULT_AGORA_CHANNEL, useAgoraCall } from "@/hooks/useAgoraCall";
+import {
+  buildCallSessionPath,
+  buildPdfSessionPath,
+  buildSessionSearchParams,
+  normalizeSessionId,
+  normalizeSessionName,
+  resolveSession,
+} from "@/lib/collabSession";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/use-toast";
 
 const statusStyles = {
   idle: "border-slate-200 bg-slate-50 text-slate-700",
@@ -28,7 +40,11 @@ const statusStyles = {
 } as const;
 
 export default function CallPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const resolvedSession = useMemo(() => resolveSession(searchParams), [searchParams]);
+  const [sessionIdInput, setSessionIdInput] = useState(resolvedSession.sessionId);
+  const [sessionNameInput, setSessionNameInput] = useState(resolvedSession.sessionName);
+  const { toast } = useToast();
   const {
     channelName,
     token,
@@ -50,9 +66,76 @@ export default function CallPage() {
     toggleMicrophone,
     toggleCamera,
   } = useAgoraCall({
-    initialChannel: searchParams.get("channel") || DEFAULT_AGORA_CHANNEL,
-    initialToken: searchParams.get("token") || "",
+    initialChannel: resolvedSession.channelName || DEFAULT_AGORA_CHANNEL,
+    initialToken: resolvedSession.token,
   });
+
+  useEffect(() => {
+    if (!searchParams.get("session")) {
+      const nextParams = new URLSearchParams(
+        buildSessionSearchParams(resolvedSession.sessionId, resolvedSession.sessionName, resolvedSession.token),
+      );
+      nextParams.set("channel", resolvedSession.sessionId);
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [resolvedSession.sessionId, resolvedSession.sessionName, resolvedSession.token, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    setSessionIdInput(resolvedSession.sessionId);
+    setSessionNameInput(resolvedSession.sessionName);
+    setChannelName(resolvedSession.channelName);
+    setToken(resolvedSession.token);
+  }, [
+    resolvedSession.channelName,
+    resolvedSession.sessionId,
+    resolvedSession.sessionName,
+    resolvedSession.token,
+    setChannelName,
+    setToken,
+  ]);
+
+  const applySessionDetails = (options?: { announce?: boolean }) => {
+    const nextSessionId = normalizeSessionId(sessionIdInput);
+    const nextSessionName = normalizeSessionName(sessionNameInput, nextSessionId);
+    const nextToken = token.trim();
+
+    setSessionIdInput(nextSessionId);
+    setSessionNameInput(nextSessionName);
+    setChannelName(nextSessionId);
+    const nextParams = new URLSearchParams(buildSessionSearchParams(nextSessionId, nextSessionName, nextToken));
+    nextParams.set("channel", nextSessionId);
+    setSearchParams(nextParams);
+
+    if (options?.announce !== false) {
+      toast({
+        title: "Call session updated",
+        description: `The call tab now points at session ${nextSessionId}.`,
+      });
+    }
+
+    return { nextSessionId, nextSessionName, nextToken };
+  };
+
+  const handleCopyCallLink = async () => {
+    const { nextSessionId, nextSessionName, nextToken } = applySessionDetails({ announce: false });
+    const inviteUrl = `${window.location.origin}${buildCallSessionPath(nextSessionId, nextSessionName, nextToken)}`;
+
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      toast({
+        title: "Call link copied",
+        description: "Share it if you want someone to land directly in the matching call room.",
+      });
+    } catch {
+      toast({
+        title: "Copy failed",
+        description: inviteUrl,
+      });
+    }
+  };
+
+  const pdfPath = buildPdfSessionPath(resolvedSession.sessionId, resolvedSession.sessionName, token.trim());
+  const callPath = buildCallSessionPath(resolvedSession.sessionId, resolvedSession.sessionName, token.trim());
 
   return (
     <section className="min-h-screen bg-[linear-gradient(180deg,#eff6ff_0%,#f8fafc_30%,#ffffff_100%)] px-4 py-8 sm:px-6 lg:px-8">
@@ -75,17 +158,47 @@ export default function CallPage() {
           <Card className="border-slate-200 shadow-sm">
             <CardHeader>
               <CardTitle>Call controls</CardTitle>
-              <CardDescription>Use the same channel name on another device or browser tab to simulate a collaborative session.</CardDescription>
+              <CardDescription>Use the same session link on another device or browser tab to land in the same collaborative room.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700" htmlFor="channelName">Channel name</label>
-                <Input id="channelName" value={channelName} onChange={(event) => setChannelName(event.target.value)} placeholder={DEFAULT_AGORA_CHANNEL} disabled={isBusy} />
+                <label className="text-sm font-medium text-slate-700" htmlFor="sessionName">Session name</label>
+                <Input id="sessionName" value={sessionNameInput} onChange={(event) => setSessionNameInput(event.target.value)} placeholder="Review session" disabled={isBusy} />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700" htmlFor="channelName">Session ID / Agora room</label>
+                <Input
+                  id="channelName"
+                  value={sessionIdInput}
+                  onChange={(event) => {
+                    setSessionIdInput(event.target.value);
+                    setChannelName(event.target.value);
+                  }}
+                  placeholder={DEFAULT_AGORA_CHANNEL}
+                  disabled={isBusy}
+                />
+                <p className="text-xs leading-5 text-slate-500">This value is the shared room key across `/pdf` and `/call`.</p>
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700" htmlFor="token">Token (optional)</label>
                 <Input id="token" value={token} onChange={(event) => setToken(event.target.value)} placeholder="Paste Agora token if your project requires one" disabled={isBusy} />
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                <p className="font-medium text-slate-950">Shared session</p>
+                <p className="mt-2">Session name: <span className="font-medium text-slate-900">{resolvedSession.sessionName}</span></p>
+                <p className="mt-1">Session ID: <span className="font-mono text-xs text-slate-900 sm:text-sm">{resolvedSession.sessionId}</span></p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" className="border-slate-300" onClick={handleCopyCallLink} disabled={isBusy}>
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy call link
+                  </Button>
+                  <Button type="button" onClick={() => applySessionDetails()} disabled={isBusy}>
+                    Save session
+                  </Button>
+                </div>
               </div>
 
               <Alert className="border-slate-200 bg-slate-50">
@@ -123,12 +236,15 @@ export default function CallPage() {
 
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                 <p className="font-medium text-slate-950">Shareable route</p>
-                <p className="mt-2 break-all text-xs sm:text-sm">/call?channel={normalizedChannel || DEFAULT_AGORA_CHANNEL}</p>
-                <p className="mt-3 text-xs leading-5 text-slate-500">If your Agora project uses temporary tokens, add the matching token to each participant before joining.</p>
+                <p className="mt-2 break-all text-xs sm:text-sm">{callPath}</p>
+                <p className="mt-3 text-xs leading-5 text-slate-500">If your Agora project uses temporary tokens, the copied link includes the current token value. Treat that link as sensitive.</p>
               </div>
 
-              <Link to="/pdf" className="inline-flex items-center text-sm font-medium text-sky-700 hover:text-sky-800">
-                Open the collaborative PDF workspace <Video className="ml-2 h-4 w-4" />
+              <Link to={pdfPath} className="inline-flex items-center text-sm font-medium text-sky-700 hover:text-sky-800">
+                Open the matching PDF workspace <Video className="ml-2 h-4 w-4" />
+              </Link>
+              <Link to={callPath} className="inline-flex items-center text-sm font-medium text-slate-700 hover:text-slate-900">
+                Refresh this route with the saved session params <ExternalLink className="ml-2 h-4 w-4" />
               </Link>
             </CardContent>
           </Card>

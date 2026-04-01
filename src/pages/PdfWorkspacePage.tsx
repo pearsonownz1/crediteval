@@ -1,12 +1,17 @@
 import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import EmbedPDF from "@embedpdf/snippet";
 import {
   Camera,
   CameraOff,
   CheckCircle2,
+  Copy,
   Download,
+  ExternalLink,
   FileBadge2,
   FileText,
+  Link2,
+  Loader2,
   MessageSquare,
   Mic,
   MicOff,
@@ -14,6 +19,7 @@ import {
   PhoneOff,
   Radio,
   RefreshCw,
+  Save,
   Send,
   Upload,
   Video,
@@ -28,18 +34,21 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { DEFAULT_AGORA_CHANNEL, useAgoraCall } from "@/hooks/useAgoraCall";
+import {
+  buildCallSessionPath,
+  buildPdfSessionPath,
+  buildSessionSearchParams,
+  createSessionId,
+  normalizeSessionId,
+  normalizeSessionName,
+  resolveSession,
+} from "@/lib/collabSession";
+import { supabase } from "@/lib/supabaseClient";
 import { cn } from "@/lib/utils";
 
-const formatFileSize = (bytes: number) => {
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-};
+const STORAGE_BUCKET = "pdf-collab";
 
 const statusStyles = {
   idle: "border-slate-200 bg-slate-50 text-slate-700",
@@ -56,39 +65,80 @@ type ChatMessage = {
   timestamp: string;
 };
 
+type SessionDocument = {
+  sessionId: string;
+  sessionName: string;
+  storagePath: string | null;
+  publicUrl: string | null;
+  originalFilename: string | null;
+  fileSize: number | null;
+  uploadedAt: string | null;
+};
+
 const initialMessages: ChatMessage[] = [
   {
     id: 1,
     author: "Elena",
     role: "Team",
-    text: "Uploaded the latest transcript. Let’s use this space to flag any line items that need follow-up before final delivery.",
+    text: "I’m in. Keep the birth certificate open while we verify the dates against the intake notes.",
     timestamp: "9:12 AM",
   },
   {
     id: 2,
     author: "Ops",
     role: "Team",
-    text: "I already validated the seal page. The remaining question is whether the appendix formatting should match the agency template.",
+    text: "If someone else joins from the invite link, they’ll land in this same review room and call session.",
     timestamp: "9:18 AM",
-  },
-  {
-    id: 3,
-    author: "You",
-    role: "You",
-    text: "Got it. I’m reviewing page 3 now and will note anything that looks inconsistent with the translated summary.",
-    timestamp: "9:21 AM",
   },
 ];
 
-const PdfWorkspacePage = () => {
+const formatFileSize = (bytes: number) => {
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+};
+
+const formatUploadedAt = (value: string | null) => {
+  if (!value) {
+    return "Not uploaded yet";
+  }
+
+  return new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+const safeFileName = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+export default function PdfWorkspacePage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const resolvedSession = useMemo(() => resolveSession(searchParams), [searchParams]);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const viewerHostRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [chatDraft, setChatDraft] = useState("");
   const [messages, setMessages] = useState(initialMessages);
+  const [sessionIdInput, setSessionIdInput] = useState(resolvedSession.sessionId);
+  const [sessionNameInput, setSessionNameInput] = useState(resolvedSession.sessionName);
+  const [documentRecord, setDocumentRecord] = useState<SessionDocument | null>(null);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [sessionError, setSessionError] = useState("");
   const { toast } = useToast();
+
   const {
     channelName,
     token,
@@ -105,27 +155,95 @@ const PdfWorkspacePage = () => {
     remoteVideoRefs,
     setChannelName,
     setToken,
-    handleJoin,
-    handleLeave,
+    joinCall,
+    leaveCall,
     toggleMicrophone,
     toggleCamera,
   } = useAgoraCall({
-    initialChannel: DEFAULT_AGORA_CHANNEL,
-    readyMessage: "Ready to bring reviewers into the room. Match the same channel name on every participant tab.",
-    joinedMessage: (channel) => `Connected to "${channel}". Review the PDF while the call runs alongside it.`,
-    leftMessage: "Call ended. The PDF workspace stays open, and you can jump back in whenever you need.",
+    initialChannel: resolvedSession.channelName || DEFAULT_AGORA_CHANNEL,
+    initialToken: resolvedSession.token,
+    readyMessage: "Ready to bring reviewers into the room. Share the invite link so they land in the same PDF session and Agora channel.",
+    joinedMessage: (channel) => `Connected to "${channel}". Everyone on the shared session link joins this same call room.`,
+    leftMessage: "Call ended. The shared PDF session is still live, and you can rejoin whenever you need.",
   });
 
   useEffect(() => {
-    if (!uploadedFile) {
-      return;
+    if (!searchParams.get("session")) {
+      const nextSessionId = normalizeSessionId(searchParams.get("channel") || createSessionId());
+      const nextSessionName = normalizeSessionName(searchParams.get("name"), nextSessionId);
+      const nextToken = (searchParams.get("token") || "").trim();
+
+      setSearchParams(buildSessionSearchParams(nextSessionId, nextSessionName, nextToken), { replace: true });
     }
+  }, [searchParams, setSearchParams]);
 
-    const nextUrl = URL.createObjectURL(uploadedFile);
-    setFileUrl(nextUrl);
+  useEffect(() => {
+    setSessionIdInput(resolvedSession.sessionId);
+    setSessionNameInput(resolvedSession.sessionName);
+    setChannelName(resolvedSession.channelName);
+    setToken(resolvedSession.token);
+  }, [resolvedSession.channelName, resolvedSession.sessionId, resolvedSession.sessionName, resolvedSession.token, setChannelName, setToken]);
 
-    return () => URL.revokeObjectURL(nextUrl);
-  }, [uploadedFile]);
+  useEffect(() => {
+    let isActive = true;
+
+    const loadSession = async () => {
+      setIsLoadingSession(true);
+      setSessionError("");
+
+      const { data, error } = await supabase
+        .from("pdf_collab_sessions")
+        .select("session_id, session_name, storage_path, public_url, original_filename, file_size, uploaded_at")
+        .eq("session_id", resolvedSession.sessionId)
+        .maybeSingle();
+
+      if (!isActive) {
+        return;
+      }
+
+      if (error) {
+        setSessionError(error.message);
+        setIsLoadingSession(false);
+        return;
+      }
+
+      if (data) {
+        const nextRecord: SessionDocument = {
+          sessionId: data.session_id,
+          sessionName: data.session_name,
+          storagePath: data.storage_path,
+          publicUrl: data.public_url,
+          originalFilename: data.original_filename,
+          fileSize: data.file_size,
+          uploadedAt: data.uploaded_at,
+        };
+        setDocumentRecord(nextRecord);
+        setViewerUrl(nextRecord.publicUrl);
+        if (data.session_name && data.session_name !== resolvedSession.sessionName) {
+          setSessionNameInput(data.session_name);
+        }
+      } else {
+        setDocumentRecord({
+          sessionId: resolvedSession.sessionId,
+          sessionName: resolvedSession.sessionName,
+          storagePath: null,
+          publicUrl: null,
+          originalFilename: null,
+          fileSize: null,
+          uploadedAt: null,
+        });
+        setViewerUrl(null);
+      }
+
+      setIsLoadingSession(false);
+    };
+
+    void loadSession();
+
+    return () => {
+      isActive = false;
+    };
+  }, [resolvedSession.sessionId, resolvedSession.sessionName]);
 
   useEffect(() => {
     if (!viewerHostRef.current) {
@@ -135,38 +253,147 @@ const PdfWorkspacePage = () => {
     const host = viewerHostRef.current;
     host.innerHTML = "";
 
-    if (!fileUrl) {
+    if (!viewerUrl) {
       return;
     }
 
     EmbedPDF.init({
       type: "container",
       target: host,
-      src: fileUrl,
+      src: viewerUrl,
     });
 
     return () => {
       host.innerHTML = "";
     };
-  }, [fileUrl]);
+  }, [viewerUrl]);
 
   const metadata = useMemo(() => {
-    if (!uploadedFile) {
+    if (!documentRecord) {
       return null;
     }
 
     return {
-      name: uploadedFile.name,
-      size: formatFileSize(uploadedFile.size),
-      modified: new Date(uploadedFile.lastModified).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      }),
+      name: documentRecord.originalFilename ?? "Awaiting upload",
+      size: documentRecord.fileSize ? formatFileSize(documentRecord.fileSize) : "Not available",
+      uploadedAt: formatUploadedAt(documentRecord.uploadedAt),
     };
-  }, [uploadedFile]);
+  }, [documentRecord]);
 
-  const loadFile = (file: File | null) => {
+  const persistSession = async (
+    nextSessionId: string,
+    nextSessionName: string,
+    overrides?: Partial<SessionDocument>,
+    announce = true,
+  ) => {
+    const payload = {
+      session_id: nextSessionId,
+      session_name: nextSessionName,
+      storage_path: overrides?.storagePath ?? documentRecord?.storagePath ?? null,
+      public_url: overrides?.publicUrl ?? documentRecord?.publicUrl ?? null,
+      original_filename: overrides?.originalFilename ?? documentRecord?.originalFilename ?? null,
+      file_size: overrides?.fileSize ?? documentRecord?.fileSize ?? null,
+      uploaded_at: overrides?.uploadedAt ?? documentRecord?.uploadedAt ?? null,
+    };
+
+    const { data, error } = await supabase
+      .from("pdf_collab_sessions")
+      .upsert(payload, { onConflict: "session_id" })
+      .select("session_id, session_name, storage_path, public_url, original_filename, file_size, uploaded_at")
+      .single();
+
+    if (error) {
+      setSessionError(error.message);
+      throw error;
+    }
+
+    const nextRecord: SessionDocument = {
+      sessionId: data.session_id,
+      sessionName: data.session_name,
+      storagePath: data.storage_path,
+      publicUrl: data.public_url,
+      originalFilename: data.original_filename,
+      fileSize: data.file_size,
+      uploadedAt: data.uploaded_at,
+    };
+
+    setDocumentRecord(nextRecord);
+    setViewerUrl(nextRecord.publicUrl);
+
+    if (announce) {
+      toast({
+        title: "Session saved",
+        description: `Review room ${nextSessionId} is ready to share.`,
+      });
+    }
+
+    return nextRecord;
+  };
+
+  const applySessionDetails = async (options?: { announce?: boolean }) => {
+    const nextSessionId = normalizeSessionId(sessionIdInput);
+    const nextSessionName = normalizeSessionName(sessionNameInput, nextSessionId);
+    const nextToken = token.trim();
+
+    setSessionIdInput(nextSessionId);
+    setSessionNameInput(nextSessionName);
+    setChannelName(nextSessionId);
+    await persistSession(nextSessionId, nextSessionName, undefined, options?.announce !== false);
+    setSearchParams(buildSessionSearchParams(nextSessionId, nextSessionName, nextToken));
+
+    return { nextSessionId, nextSessionName, nextToken };
+  };
+
+  const uploadFileToSession = async (file: File) => {
+    const nextSessionId = normalizeSessionId(sessionIdInput || resolvedSession.sessionId);
+    const nextSessionName = normalizeSessionName(sessionNameInput || resolvedSession.sessionName, nextSessionId);
+    const storagePath = `${nextSessionId}/${Date.now()}-${safeFileName(file.name)}`;
+
+    setIsUploading(true);
+    setSessionError("");
+
+    const { error: uploadError } = await supabase.storage.from(STORAGE_BUCKET).upload(storagePath, file, {
+      cacheControl: "3600",
+      upsert: true,
+      contentType: file.type || "application/pdf",
+    });
+
+    if (uploadError) {
+      setIsUploading(false);
+      setSessionError(uploadError.message);
+      toast({
+        title: "Upload failed",
+        description: uploadError.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { data: publicUrlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(storagePath);
+    const uploadedAt = new Date().toISOString();
+
+    await persistSession(
+      nextSessionId,
+      nextSessionName,
+      {
+        storagePath,
+        publicUrl: publicUrlData.publicUrl,
+        originalFilename: file.name,
+        fileSize: file.size,
+        uploadedAt,
+      },
+      false,
+    );
+
+    setSearchParams(buildSessionSearchParams(nextSessionId, nextSessionName, token.trim()));
+    setIsUploading(false);
+    toast({
+      title: "PDF uploaded",
+      description: `Everyone on session ${nextSessionId} can now open the same document.`,
+    });
+  };
+
+  const loadFile = async (file: File | null) => {
     if (!file) {
       return;
     }
@@ -174,42 +401,39 @@ const PdfWorkspacePage = () => {
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
       toast({
         title: "PDF required",
-        description: "Upload a PDF file to preview it in the viewer.",
+        description: "Upload a PDF file to preview and share it with collaborators.",
       });
       return;
     }
 
-    setUploadedFile(file);
+    await uploadFileToSession(file);
   };
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    loadFile(event.target.files?.[0] ?? null);
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    await loadFile(event.target.files?.[0] ?? null);
     event.target.value = "";
   };
 
-  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+  const handleDrop = async (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setIsDragging(false);
-    loadFile(event.dataTransfer.files?.[0] ?? null);
+    await loadFile(event.dataTransfer.files?.[0] ?? null);
   };
 
   const handleDownload = () => {
-    if (!fileUrl || !uploadedFile) {
+    if (!viewerUrl || !documentRecord?.originalFilename) {
       return;
     }
 
     const link = document.createElement("a");
-    link.href = fileUrl;
-    link.download = uploadedFile.name;
+    link.href = viewerUrl;
+    link.download = documentRecord.originalFilename;
     link.click();
   };
 
   const handleSendMessage = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
-    if (!chatDraft.trim()) {
-      return;
-    }
+    if (!chatDraft.trim()) return;
 
     setMessages((current) => [
       ...current,
@@ -218,14 +442,49 @@ const PdfWorkspacePage = () => {
         author: "You",
         role: "You",
         text: chatDraft.trim(),
-        timestamp: new Date().toLocaleTimeString("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-        }),
+        timestamp: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
       },
     ]);
     setChatDraft("");
   };
+
+  const handleCopyInviteLink = async () => {
+    const nextSessionId = normalizeSessionId(sessionIdInput || resolvedSession.sessionId);
+    const nextSessionName = normalizeSessionName(sessionNameInput || resolvedSession.sessionName, nextSessionId);
+    const inviteUrl = `${window.location.origin}${buildPdfSessionPath(nextSessionId, nextSessionName, token.trim())}`;
+
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      toast({
+        title: "Invite link copied",
+        description: "Share it with another reviewer to join the same document room.",
+      });
+    } catch {
+      toast({ title: "Copy failed", description: inviteUrl });
+    }
+  };
+
+  const handleNewSession = () => {
+    const nextSessionId = createSessionId();
+    const nextSessionName = normalizeSessionName("", nextSessionId);
+    setSessionIdInput(nextSessionId);
+    setSessionNameInput(nextSessionName);
+    setDocumentRecord({
+      sessionId: nextSessionId,
+      sessionName: nextSessionName,
+      storagePath: null,
+      publicUrl: null,
+      originalFilename: null,
+      fileSize: null,
+      uploadedAt: null,
+    });
+    setViewerUrl(null);
+    setSearchParams(buildSessionSearchParams(nextSessionId, nextSessionName, token.trim()));
+    toast({ title: "New session created", description: `Room ${nextSessionId} is ready for a new document.` });
+  };
+
+  const callPath = buildCallSessionPath(resolvedSession.sessionId, resolvedSession.sessionName, token.trim());
+  const invitePath = buildPdfSessionPath(resolvedSession.sessionId, resolvedSession.sessionName, token.trim());
 
   return (
     <section className="min-h-screen bg-[linear-gradient(180deg,#eff6ff_0%,#f8fafc_30%,#ffffff_100%)] px-4 py-6 sm:px-6 lg:px-8">
@@ -234,21 +493,25 @@ const PdfWorkspacePage = () => {
           <div className="flex flex-col gap-5 border-b border-slate-200 bg-slate-950 px-6 py-5 text-white xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sky-300">Collaborative PDF review</p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Review the document, keep the call live, and chat beside the file</h1>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Review the document, keep the call live, and share the same file with the room</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
-                The PDF stays dominant on the left. The collaboration rail on the right keeps live discussion and lightweight review chat one click away instead of scattered across three tabs like savages.
+                Upload once to Supabase, share the invite link, and everyone lands in the same document session while the Agora call runs beside it.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
+              <Button variant="outline" className="border-slate-700 bg-transparent text-white hover:bg-slate-900" onClick={handleCopyInviteLink}>
+                <Link2 className="mr-2 h-4 w-4" />
+                Invite
+              </Button>
               <Badge variant="outline" className={cn("rounded-full border px-3 py-1 text-xs font-medium", statusStyles[status])}>
                 <Radio className="mr-1.5 h-3.5 w-3.5" />
                 {status === "idle" ? "Call ready" : status === "joining" ? "Joining" : status === "joined" ? "Live" : "Leaving"}
               </Badge>
-              <Button variant="secondary" className="bg-white text-slate-950 hover:bg-slate-100" onClick={() => fileInputRef.current?.click()}>
-                <Upload className="mr-2 h-4 w-4" />
+              <Button variant="secondary" className="bg-white text-slate-950 hover:bg-slate-100" onClick={() => fileInputRef.current?.click()} disabled={isUploading || isLoadingSession}>
+                {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                 Upload PDF
               </Button>
-              <Button variant="outline" className="border-slate-700 bg-transparent text-white hover:bg-slate-900" onClick={handleDownload} disabled={!uploadedFile}>
+              <Button variant="outline" className="border-slate-700 bg-transparent text-white hover:bg-slate-900" onClick={handleDownload} disabled={!documentRecord?.publicUrl}>
                 <Download className="mr-2 h-4 w-4" />
                 Download PDF
               </Button>
@@ -261,18 +524,18 @@ const PdfWorkspacePage = () => {
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <CardTitle className="text-slate-950">Document viewer</CardTitle>
-                    <CardDescription>EmbedPDF stays front and center so reviewers can read at full size while collaborating in parallel.</CardDescription>
+                    <CardDescription>One uploaded PDF, one shared session, one less reason to send weird screenshots in Slack.</CardDescription>
                   </div>
-                  {uploadedFile ? (
+                  {documentRecord?.publicUrl ? (
                     <div className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
                       <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
-                      Loaded
+                      Shared
                     </div>
                   ) : null}
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                {!uploadedFile ? (
+                {!documentRecord?.publicUrl ? (
                   <div
                     className={cn(
                       "m-6 flex min-h-[820px] cursor-pointer flex-col items-center justify-center rounded-[24px] border border-dashed px-8 text-center transition",
@@ -296,9 +559,9 @@ const PdfWorkspacePage = () => {
                     <div className="mb-5 rounded-full bg-sky-100 p-4 text-sky-700">
                       <FileText className="h-8 w-8" />
                     </div>
-                    <h2 className="text-2xl font-semibold text-slate-950">Drop a PDF to launch the review workspace</h2>
+                    <h2 className="text-2xl font-semibold text-slate-950">Drop a PDF to launch the shared review workspace</h2>
                     <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
-                      Open a document, keep a live call running, and use the side rail for reviewer context without shrinking the file into a sad little postage stamp.
+                      The uploaded file is stored on the server and attached to this session so everyone with the invite link can view the same document while on video.
                     </p>
                     <Button className="mt-6">
                       <Upload className="mr-2 h-4 w-4" />
@@ -310,8 +573,8 @@ const PdfWorkspacePage = () => {
                   <div className="flex min-h-[820px] flex-col bg-slate-100">
                     <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-slate-950">{uploadedFile.name}</p>
-                        <p className="text-xs text-slate-500">{metadata?.size} · Ready for collaborative review</p>
+                        <p className="truncate text-sm font-medium text-slate-950">{documentRecord.originalFilename}</p>
+                        <p className="text-xs text-slate-500">{metadata?.size} · Shared in session {resolvedSession.sessionId}</p>
                       </div>
                       <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">EmbedPDF viewer</div>
                     </div>
@@ -328,191 +591,165 @@ const PdfWorkspacePage = () => {
                     <FileBadge2 className="mr-2 h-5 w-5 text-sky-700" />
                     Review snapshot
                   </CardTitle>
-                  <CardDescription>Lightweight file metadata and room context for the current session.</CardDescription>
+                  <CardDescription>Session, file, and sharing state for the current workspace.</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-3 p-5 text-sm text-slate-700">
+                  <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
+                    <span className="text-slate-500">Session name</span>
+                    <span className="max-w-[58%] truncate text-right font-medium text-slate-950">{resolvedSession.sessionName}</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
+                    <span className="text-slate-500">Session ID</span>
+                    <span className="font-mono text-xs font-medium text-slate-950">{resolvedSession.sessionId}</span>
+                  </div>
                   <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
                     <span className="text-slate-500">Document</span>
                     <span className="max-w-[58%] truncate text-right font-medium text-slate-950">{metadata?.name ?? "Awaiting upload"}</span>
                   </div>
                   <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
-                    <span className="text-slate-500">File size</span>
-                    <span className="font-medium text-slate-950">{metadata?.size ?? "Not available"}</span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
-                    <span className="text-slate-500">Last modified</span>
-                    <span className="font-medium text-slate-950">{metadata?.modified ?? "Not available"}</span>
+                    <span className="text-slate-500">Uploaded</span>
+                    <span className="text-right font-medium text-slate-950">{metadata?.uploadedAt ?? "Not uploaded yet"}</span>
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
-                    <p className="font-medium text-slate-950">Session note</p>
-                    <p className="mt-2">Use the same Agora channel in the call tab for every reviewer. The chat tab is a polished in-app prototype for coordination and isn’t persisted yet.</p>
+                    <p className="font-medium text-slate-950">Share behavior</p>
+                    <p className="mt-2">Invitees who open this session link land in the same review room and Agora channel, and the PDF now loads from Supabase storage instead of living only in one browser tab.</p>
                   </div>
+                  {sessionError ? (
+                    <Alert variant="destructive">
+                      <AlertTitle>Session error</AlertTitle>
+                      <AlertDescription>{sessionError}</AlertDescription>
+                    </Alert>
+                  ) : null}
                 </CardContent>
               </Card>
 
-              <Tabs defaultValue="call" className="flex-1">
+              <Tabs defaultValue="call" className="flex min-h-0 flex-1 flex-col">
                 <TabsList className="grid w-full grid-cols-2 bg-slate-100">
-                  <TabsTrigger value="call">Call</TabsTrigger>
-                  <TabsTrigger value="chat">Chat</TabsTrigger>
+                  <TabsTrigger value="call"><Video className="mr-2 h-4 w-4" />Call</TabsTrigger>
+                  <TabsTrigger value="chat"><MessageSquare className="mr-2 h-4 w-4" />Chat</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="call" className="mt-4 h-full">
-                  <Card className="flex h-full flex-col border-slate-200 shadow-none">
-                    <CardHeader className="border-b border-slate-200 bg-white pb-4">
-                      <CardTitle>Review call</CardTitle>
-                      <CardDescription>Join the room, keep your preview visible, and watch remote participants while the PDF stays open.</CardDescription>
+                <TabsContent value="call" className="mt-4 flex-1">
+                  <Card className="h-full border-slate-200 shadow-none">
+                    <CardHeader className="border-b border-slate-200 bg-slate-50 pb-4">
+                      <CardTitle className="text-slate-950">Live call controls</CardTitle>
+                      <CardDescription>The Agora room uses this same session ID, so every reviewer on the link lands in the same video room.</CardDescription>
                     </CardHeader>
-                    <CardContent className="flex flex-1 flex-col gap-4 p-5">
-                      <div className="grid gap-3">
-                        <div className="space-y-2">
-                          <label htmlFor="workspace-channel" className="text-sm font-medium text-slate-700">Channel name</label>
-                          <Input id="workspace-channel" value={channelName} onChange={(event) => setChannelName(event.target.value)} placeholder={DEFAULT_AGORA_CHANNEL} disabled={isBusy} />
-                        </div>
-                        <div className="space-y-2">
-                          <label htmlFor="workspace-token" className="text-sm font-medium text-slate-700">Token (optional)</label>
-                          <Input id="workspace-token" value={token} onChange={(event) => setToken(event.target.value)} placeholder="Paste an Agora token if required" disabled={isBusy} />
+                    <CardContent className="space-y-4 p-5">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700" htmlFor="workspace-session-name">Session name</label>
+                        <Input id="workspace-session-name" value={sessionNameInput} onChange={(event) => setSessionNameInput(event.target.value)} disabled={isBusy || isUploading} />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700" htmlFor="workspace-session-id">Session ID / Agora room</label>
+                        <Input id="workspace-session-id" value={sessionIdInput} onChange={(event) => { setSessionIdInput(event.target.value); setChannelName(event.target.value); }} disabled={isBusy || isUploading} />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700" htmlFor="workspace-token">Token (optional)</label>
+                        <Input id="workspace-token" value={token} onChange={(event) => setToken(event.target.value)} placeholder="Paste an Agora token if required" disabled={isBusy || isUploading} />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" className="border-slate-300" onClick={handleCopyInviteLink} disabled={isBusy || isUploading}>
+                          <Copy className="mr-2 h-4 w-4" />Copy link
+                        </Button>
+                        <Button type="button" variant="outline" className="border-slate-300" onClick={handleNewSession} disabled={isBusy || isUploading}>
+                          <RefreshCw className="mr-2 h-4 w-4" />New session
+                        </Button>
+                        <Button type="button" onClick={() => void applySessionDetails()} disabled={isBusy || isUploading}>
+                          <Save className="mr-2 h-4 w-4" />Save session
+                        </Button>
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                        <p className="font-medium text-slate-950">Shared invite</p>
+                        <p className="mt-2 break-all text-xs text-slate-500">{window.location.origin}{invitePath}</p>
+                        <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          <Link to={callPath} className="font-medium text-sky-700 hover:text-sky-800">Open standalone call page</Link>
                         </div>
                       </div>
 
                       <Alert className="border-slate-200 bg-slate-50">
-                        <AlertTitle className="flex items-center gap-2 text-sm text-slate-950">
-                          <Radio className="h-4 w-4 text-sky-700" /> Room status
-                        </AlertTitle>
+                        <AlertTitle>Agora status</AlertTitle>
                         <AlertDescription>{statusMessage}</AlertDescription>
                       </Alert>
+                      {errorMessage ? <Alert variant="destructive"><AlertTitle>Call error</AlertTitle><AlertDescription>{errorMessage}</AlertDescription></Alert> : null}
 
-                      {errorMessage ? (
-                        <Alert variant="destructive">
-                          <AlertTitle>Could not connect</AlertTitle>
-                          <AlertDescription>{errorMessage}</AlertDescription>
-                        </Alert>
-                      ) : null}
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Button onClick={() => void joinCall()} disabled={isJoined || isBusy} className="h-11">
+                          {status === "joining" ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Phone className="mr-2 h-4 w-4" />}Join call
+                        </Button>
+                        <Button variant="outline" onClick={() => void leaveCall()} disabled={!isJoined || isBusy} className="h-11 border-slate-300">
+                          <PhoneOff className="mr-2 h-4 w-4" />Leave
+                        </Button>
+                      </div>
 
-                      <div className="grid grid-cols-2 gap-3">
-                        <Button onClick={() => void handleJoin()} disabled={isJoined || isBusy} className="h-11">
-                          {status === "joining" ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Phone className="mr-2 h-4 w-4" />}
-                          Join
-                        </Button>
-                        <Button onClick={() => void handleLeave()} disabled={!isJoined || isBusy} variant="outline" className="h-11 border-slate-300">
-                          <PhoneOff className="mr-2 h-4 w-4" />
-                          Leave
-                        </Button>
-                        <Button onClick={() => void toggleMicrophone()} disabled={!isJoined || isBusy} variant="secondary" className="h-11">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Button variant="outline" onClick={() => void toggleMicrophone()} disabled={!isJoined || isBusy} className="border-slate-300">
                           {isMicEnabled ? <Mic className="mr-2 h-4 w-4" /> : <MicOff className="mr-2 h-4 w-4" />}
-                          {isMicEnabled ? "Mute" : "Unmute"}
+                          {isMicEnabled ? "Mute mic" : "Unmute mic"}
                         </Button>
-                        <Button onClick={() => void toggleCamera()} disabled={!isJoined || isBusy} variant="secondary" className="h-11">
+                        <Button variant="outline" onClick={() => void toggleCamera()} disabled={!isJoined || isBusy} className="border-slate-300">
                           {isCameraEnabled ? <Camera className="mr-2 h-4 w-4" /> : <CameraOff className="mr-2 h-4 w-4" />}
                           {isCameraEnabled ? "Camera off" : "Camera on"}
                         </Button>
                       </div>
 
-                      <div className="grid gap-4 xl:grid-cols-1">
-                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950">
-                          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3 text-sm text-slate-200">
-                            <span className="font-medium">Local preview</span>
-                            <span className="text-xs text-slate-400">{normalizedChannel || DEFAULT_AGORA_CHANNEL}</span>
-                          </div>
-                          <div className="relative">
-                            <div ref={localVideoContainerRef} className="aspect-[16/10] w-full" />
-                            {!isJoined ? (
-                              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-950/90 text-center text-slate-300">
-                                <Video className="h-10 w-10 text-slate-500" />
-                                <p className="text-sm font-medium">Join to preview your camera</p>
-                              </div>
-                            ) : null}
-                          </div>
+                      <div className="grid gap-3 lg:grid-cols-2">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-950 p-3 text-white">
+                          <p className="mb-3 text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Local</p>
+                          <div ref={localVideoContainerRef} className="h-40 rounded-xl bg-slate-900" />
                         </div>
-
-                        <div className="flex min-h-[220px] flex-col rounded-2xl border border-slate-200 bg-slate-50">
-                          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-                            <p className="text-sm font-medium text-slate-950">Remote participants</p>
-                            <Badge variant="secondary" className="rounded-full px-2.5 py-0.5">{remoteParticipants.length}</Badge>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                          <div className="mb-3 flex items-center justify-between">
+                            <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Remote</p>
+                            <Badge variant="outline" className="border-slate-300 text-slate-600">{remoteParticipants.length} connected</Badge>
                           </div>
-                          {remoteParticipants.length === 0 ? (
-                            <div className="flex flex-1 flex-col items-center justify-center px-6 py-10 text-center text-slate-500">
-                              <Phone className="mb-3 h-7 w-7 text-slate-400" />
-                              <p className="text-sm font-medium text-slate-700">Waiting for someone else to join</p>
-                              <p className="mt-2 text-xs leading-5">Open the same channel in another tab or on another machine and their feed will land here.</p>
-                            </div>
-                          ) : (
-                            <div className="grid gap-3 p-3">
-                              {remoteParticipants.map((participant) => (
-                                <div key={participant.uid} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                                  <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2 text-xs text-slate-500">
-                                    <span className="font-medium text-slate-900">Participant {participant.uid}</span>
-                                    <div className="flex items-center gap-2">
-                                      {participant.hasAudio ? <Mic className="h-3.5 w-3.5" /> : <MicOff className="h-3.5 w-3.5" />}
-                                      {participant.hasVideo ? <Camera className="h-3.5 w-3.5" /> : <CameraOff className="h-3.5 w-3.5" />}
-                                    </div>
-                                  </div>
-                                  <div className="relative bg-slate-950">
-                                    <div ref={(node) => { remoteVideoRefs.current[participant.uid] = node; }} className="aspect-[16/10] w-full" />
-                                    {!participant.hasVideo ? (
-                                      <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-300">Camera off</div>
-                                    ) : null}
-                                  </div>
+                          <div className="grid gap-3">
+                            {remoteParticipants.length ? remoteParticipants.map((participant) => (
+                              <div key={participant.uid} className="rounded-xl border border-slate-200 bg-white p-3">
+                                <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
+                                  <span>{participant.uid}</span>
+                                  <span>{participant.hasAudio ? "Audio on" : "Audio off"} · {participant.hasVideo ? "Video on" : "Video off"}</span>
                                 </div>
-                              ))}
-                            </div>
-                          )}
+                                <div ref={(element) => { remoteVideoRefs.current[participant.uid] = element; }} className="h-28 rounded-lg bg-slate-100" />
+                              </div>
+                            )) : <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">No one else has joined yet.</div>}
+                          </div>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
                 </TabsContent>
 
-                <TabsContent value="chat" className="mt-4 h-full">
+                <TabsContent value="chat" className="mt-4 flex-1">
                   <Card className="flex h-full flex-col border-slate-200 shadow-none">
-                    <CardHeader className="border-b border-slate-200 bg-white pb-4">
-                      <CardTitle className="flex items-center gap-2">
-                        <MessageSquare className="h-5 w-5 text-sky-700" />
-                        Review chat
-                      </CardTitle>
-                      <CardDescription>A polished internal chat prototype for document review notes. It’s local-only for now, but the UI is ready for a real backend later.</CardDescription>
+                    <CardHeader className="border-b border-slate-200 bg-slate-50 pb-4">
+                      <CardTitle className="text-slate-950">Review chat</CardTitle>
+                      <CardDescription>Lightweight room chat for notes while the call is running. Still prototype-local for now.</CardDescription>
                     </CardHeader>
-                    <CardContent className="flex flex-1 flex-col gap-4 p-0">
-                      <div className="flex items-center justify-between px-5 pt-5 text-sm text-slate-600">
-                        <div>
-                          <p className="font-medium text-slate-950">Review thread</p>
-                          <p className="text-xs text-slate-500">Discuss edits, approvals, and weird formatting crimes in one place.</p>
-                        </div>
-                        <Badge variant="outline" className="rounded-full">Prototype</Badge>
-                      </div>
-                      <Separator />
-                      <ScrollArea className="h-[420px] px-5">
-                        <div className="space-y-4 pb-5">
+                    <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-5">
+                      <ScrollArea className="h-[360px] rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="space-y-4 pr-3">
                           {messages.map((message) => (
                             <div key={message.id} className={cn("flex gap-3", message.role === "You" ? "justify-end" : "justify-start")}>
-                              {message.role === "Team" ? (
-                                <Avatar className="mt-1 h-9 w-9 border border-slate-200">
-                                  <AvatarFallback className="bg-slate-100 text-slate-700">{message.author.slice(0, 2).toUpperCase()}</AvatarFallback>
-                                </Avatar>
-                              ) : null}
-                              <div className={cn("max-w-[85%] rounded-2xl px-4 py-3 shadow-sm", message.role === "You" ? "bg-slate-950 text-white" : "border border-slate-200 bg-white text-slate-900")}>
-                                <div className="mb-1 flex items-center gap-2 text-xs">
-                                  <span className={cn("font-semibold", message.role === "You" ? "text-slate-200" : "text-slate-700")}>{message.author}</span>
-                                  <span className={message.role === "You" ? "text-slate-400" : "text-slate-400"}>{message.timestamp}</span>
+                              {message.role === "Team" ? <Avatar className="h-8 w-8"><AvatarFallback>{message.author.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar> : null}
+                              <div className={cn("max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-6", message.role === "You" ? "bg-slate-950 text-white" : "border border-slate-200 bg-white text-slate-700")}>
+                                <div className="mb-1 flex items-center gap-2 text-xs font-medium opacity-75">
+                                  <span>{message.author}</span>
+                                  <span>{message.timestamp}</span>
                                 </div>
-                                <p className={cn("text-sm leading-6", message.role === "You" ? "text-slate-100" : "text-slate-600")}>{message.text}</p>
+                                <p>{message.text}</p>
                               </div>
-                              {message.role === "You" ? (
-                                <Avatar className="mt-1 h-9 w-9 border border-slate-800">
-                                  <AvatarFallback className="bg-slate-900 text-slate-100">YU</AvatarFallback>
-                                </Avatar>
-                              ) : null}
                             </div>
                           ))}
                         </div>
                       </ScrollArea>
                       <Separator />
-                      <form onSubmit={handleSendMessage} className="space-y-3 p-5">
-                        <Textarea value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder="Add a review note, capture a decision, or leave a reminder for the next pass..." className="min-h-[110px] resize-none border-slate-200 bg-slate-50" />
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-xs leading-5 text-slate-500">Prototype-only for now: messages stay in local page state and reset on refresh.</p>
+                      <form className="space-y-3" onSubmit={handleSendMessage}>
+                        <Input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder="Send a quick note to the room…" />
+                        <div className="flex justify-end">
                           <Button type="submit" disabled={!chatDraft.trim()}>
-                            <Send className="mr-2 h-4 w-4" />
-                            Send
+                            <Send className="mr-2 h-4 w-4" />Send
                           </Button>
                         </div>
                       </form>
@@ -528,6 +765,4 @@ const PdfWorkspacePage = () => {
       <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handleFileChange} />
     </section>
   );
-};
-
-export default PdfWorkspacePage;
+}
