@@ -26,6 +26,7 @@ export const generatePdfTranslation = async (
     headers: {
       "Content-Type": "application/json",
       apikey: publicEnv.supabaseAnonKey,
+      Authorization: `Bearer ${publicEnv.supabaseAnonKey}`,
     },
     body: JSON.stringify({
       fileName: file.name,
