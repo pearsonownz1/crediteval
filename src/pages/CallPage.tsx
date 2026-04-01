@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
@@ -12,34 +11,14 @@ import {
   RefreshCw,
   Video,
 } from "lucide-react";
+
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { DEFAULT_AGORA_CHANNEL, useAgoraCall } from "@/hooks/useAgoraCall";
 import { cn } from "@/lib/utils";
-import {
-  AGORA_APP_ID,
-  AgoraClient,
-  AgoraLocalAudioTrack,
-  AgoraLocalVideoTrack,
-  AgoraRemoteUser,
-  AgoraUid,
-  getAgoraErrorMessage,
-  loadAgoraRtcSdk,
-} from "@/lib/agoraRtc";
-
-const DEFAULT_CHANNEL = "crediteval-demo";
-
-type CallStatus = "idle" | "joining" | "joined" | "leaving";
-
-type RemoteParticipant = {
-  uid: string;
-  hasAudio: boolean;
-  hasVideo: boolean;
-  audioTrack?: AgoraRemoteUser["audioTrack"];
-  videoTrack?: AgoraRemoteUser["videoTrack"];
-};
 
 const statusStyles = {
   idle: "border-slate-200 bg-slate-50 text-slate-700",
@@ -48,469 +27,168 @@ const statusStyles = {
   leaving: "border-amber-200 bg-amber-50 text-amber-700",
 } as const;
 
-function toParticipant(user: AgoraRemoteUser): RemoteParticipant {
-  return {
-    uid: String(user.uid),
-    hasAudio: Boolean(user.hasAudio || user.audioTrack),
-    hasVideo: Boolean(user.hasVideo || user.videoTrack),
-    audioTrack: user.audioTrack,
-    videoTrack: user.videoTrack,
-  };
-}
-
 export default function CallPage() {
   const [searchParams] = useSearchParams();
-  const [channelName, setChannelName] = useState(searchParams.get("channel") || DEFAULT_CHANNEL);
-  const [token, setToken] = useState(searchParams.get("token") || "");
-  const [status, setStatus] = useState<CallStatus>("idle");
-  const [errorMessage, setErrorMessage] = useState("");
-  const [statusMessage, setStatusMessage] = useState(
-    "Ready to join. Use a shared channel name so another participant can enter the same room.",
-  );
-  const [remoteParticipants, setRemoteParticipants] = useState<RemoteParticipant[]>([]);
-  const [isMicEnabled, setIsMicEnabled] = useState(true);
-  const [isCameraEnabled, setIsCameraEnabled] = useState(true);
-
-  const clientRef = useRef<AgoraClient | null>(null);
-  const localAudioTrackRef = useRef<AgoraLocalAudioTrack | null>(null);
-  const localVideoTrackRef = useRef<AgoraLocalVideoTrack | null>(null);
-  const localVideoContainerRef = useRef<HTMLDivElement | null>(null);
-  const remoteVideoRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const joinedRef = useRef(false);
-
-  const isJoined = status === "joined";
-  const isBusy = status === "joining" || status === "leaving";
-  const normalizedChannel = channelName.trim();
-  const normalizedToken = token.trim();
-
-  const upsertRemoteUser = useCallback((user: AgoraRemoteUser) => {
-    const nextParticipant = toParticipant(user);
-
-    setRemoteParticipants((currentParticipants) => {
-      const remainingParticipants = currentParticipants.filter(
-        (participant) => participant.uid !== nextParticipant.uid,
-      );
-      return [...remainingParticipants, nextParticipant];
-    });
-  }, []);
-
-  const removeRemoteUser = useCallback((uid: AgoraUid) => {
-    const normalizedUid = String(uid);
-    const remoteContainer = remoteVideoRefs.current[normalizedUid];
-
-    if (remoteContainer) {
-      remoteContainer.innerHTML = "";
-    }
-
-    delete remoteVideoRefs.current[normalizedUid];
-    setRemoteParticipants((currentParticipants) =>
-      currentParticipants.filter((participant) => participant.uid !== normalizedUid),
-    );
-  }, []);
-
-  const cleanupCall = useCallback(async () => {
-    const audioTrack = localAudioTrackRef.current;
-    const videoTrack = localVideoTrackRef.current;
-    const client = clientRef.current;
-
-    localAudioTrackRef.current = null;
-    localVideoTrackRef.current = null;
-    clientRef.current = null;
-    joinedRef.current = false;
-    setRemoteParticipants([]);
-
-    if (localVideoContainerRef.current) {
-      localVideoContainerRef.current.innerHTML = "";
-    }
-
-    Object.values(remoteVideoRefs.current).forEach((remoteContainer) => {
-      if (remoteContainer) {
-        remoteContainer.innerHTML = "";
-      }
-    });
-
-    if (audioTrack) {
-      audioTrack.stop();
-      audioTrack.close();
-    }
-
-    if (videoTrack) {
-      videoTrack.stop();
-      videoTrack.close();
-    }
-
-    if (client) {
-      client.removeAllListeners?.();
-      await client.leave().catch(() => undefined);
-    }
-  }, []);
-
-  useEffect(() => {
-    remoteParticipants.forEach((participant) => {
-      const remoteContainer = remoteVideoRefs.current[participant.uid];
-
-      if (!remoteContainer || !participant.videoTrack) {
-        return;
-      }
-
-      remoteContainer.innerHTML = "";
-      participant.videoTrack.play(remoteContainer);
-    });
-  }, [remoteParticipants]);
-
-  useEffect(() => {
-    return () => {
-      void cleanupCall();
-    };
-  }, [cleanupCall]);
-
-  const handleJoin = useCallback(async () => {
-    if (!normalizedChannel) {
-      setErrorMessage("Enter a channel name before starting the call.");
-      setStatusMessage("A valid channel name is required before joining.");
-      return;
-    }
-
-    setErrorMessage("");
-    setStatus("joining");
-    setStatusMessage("Connecting to Agora and requesting camera/microphone access...");
-
-    try {
-      await cleanupCall();
-
-      const AgoraRTC = await loadAgoraRtcSdk();
-      const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-      clientRef.current = client;
-
-      client.on("user-published", async (user, mediaType) => {
-        await client.subscribe(user, mediaType);
-
-        if (mediaType === "audio" && user.audioTrack) {
-          user.audioTrack.play();
-        }
-
-        upsertRemoteUser(user);
-      });
-
-      client.on("user-unpublished", (user, mediaType) => {
-        if (mediaType === "audio") {
-          user.audioTrack?.stop();
-        }
-
-        upsertRemoteUser({
-          ...user,
-          audioTrack: mediaType === "audio" ? undefined : user.audioTrack,
-          videoTrack: mediaType === "video" ? undefined : user.videoTrack,
-          hasAudio: mediaType === "audio" ? false : Boolean(user.hasAudio || user.audioTrack),
-          hasVideo: mediaType === "video" ? false : Boolean(user.hasVideo || user.videoTrack),
-        });
-      });
-
-      client.on("user-left", (user) => {
-        removeRemoteUser(user.uid);
-      });
-
-      await client.join(AGORA_APP_ID, normalizedChannel, normalizedToken || null, null);
-
-      const [microphoneTrack, cameraTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
-      localAudioTrackRef.current = microphoneTrack;
-      localVideoTrackRef.current = cameraTrack;
-      joinedRef.current = true;
-
-      if (localVideoContainerRef.current) {
-        localVideoContainerRef.current.innerHTML = "";
-        cameraTrack.play(localVideoContainerRef.current);
-      }
-
-      await client.publish([microphoneTrack, cameraTrack]);
-
-      setIsMicEnabled(true);
-      setIsCameraEnabled(true);
-      setStatus("joined");
-      setStatusMessage(
-        `Live in channel "${normalizedChannel}". Share the same route and channel name with another participant.`,
-      );
-    } catch (error) {
-      await cleanupCall();
-      setStatus("idle");
-      setErrorMessage(getAgoraErrorMessage(error));
-      setStatusMessage("Session setup failed. Review permissions, token, and network access, then try again.");
-    }
-  }, [cleanupCall, normalizedChannel, normalizedToken, removeRemoteUser, upsertRemoteUser]);
-
-  const handleLeave = useCallback(async () => {
-    setStatus("leaving");
-    await cleanupCall();
-    setStatus("idle");
-    setErrorMessage("");
-    setStatusMessage("Call ended. You can rejoin with the same channel or switch to a new one.");
-  }, [cleanupCall]);
-
-  const toggleMicrophone = useCallback(async () => {
-    const audioTrack = localAudioTrackRef.current;
-
-    if (!audioTrack) {
-      return;
-    }
-
-    const nextEnabled = !isMicEnabled;
-    await audioTrack.setEnabled(nextEnabled);
-    setIsMicEnabled(nextEnabled);
-  }, [isMicEnabled]);
-
-  const toggleCamera = useCallback(async () => {
-    const videoTrack = localVideoTrackRef.current;
-
-    if (!videoTrack) {
-      return;
-    }
-
-    const nextEnabled = !isCameraEnabled;
-    await videoTrack.setEnabled(nextEnabled);
-    setIsCameraEnabled(nextEnabled);
-
-    if (!nextEnabled && localVideoContainerRef.current) {
-      localVideoContainerRef.current.innerHTML = "";
-    }
-
-    if (nextEnabled && localVideoContainerRef.current) {
-      videoTrack.play(localVideoContainerRef.current);
-    }
-  }, [isCameraEnabled]);
+  const {
+    channelName,
+    token,
+    status,
+    errorMessage,
+    statusMessage,
+    remoteParticipants,
+    isMicEnabled,
+    isCameraEnabled,
+    isJoined,
+    isBusy,
+    normalizedChannel,
+    localVideoContainerRef,
+    remoteVideoRefs,
+    setChannelName,
+    setToken,
+    joinCall,
+    leaveCall,
+    toggleMicrophone,
+    toggleCamera,
+  } = useAgoraCall({
+    initialChannel: searchParams.get("channel") || DEFAULT_AGORA_CHANNEL,
+    initialToken: searchParams.get("token") || "",
+  });
 
   return (
-    <section className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(96,165,250,0.18),_transparent_30%),linear-gradient(180deg,_#f8fbff_0%,_#eef4ff_42%,_#ffffff_100%)] py-12 text-slate-900">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl space-y-3">
-            <Badge variant="secondary" className="w-fit bg-sky-100 text-sky-800 hover:bg-sky-100">
-              Dedicated Agora demo route
-            </Badge>
-            <div className="space-y-2">
-              <h1 className="text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-                Browser-based Agora audio and video demo
-              </h1>
-              <p className="text-base leading-7 text-slate-600">
-                The Web SDK is loaded at runtime in the browser, isolated from the rest of the app, and the join flow
-                is already structured for a secure token service later.
-              </p>
-            </div>
+    <section className="min-h-screen bg-[linear-gradient(180deg,#eff6ff_0%,#f8fafc_30%,#ffffff_100%)] px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-sky-700">Agora room</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Live review call</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              Join a shared channel for realtime audio and video. This standalone route stays intact while the same call experience is also reused inside the PDF workspace.
+            </p>
           </div>
-          <Card className="border-sky-200/80 bg-white/90 backdrop-blur">
-            <CardContent className="flex flex-wrap items-center gap-3 p-4">
-              <Badge variant={isJoined ? "default" : "outline"} className={cn(isJoined && "bg-emerald-600")}>
-                {isJoined ? "Live" : "Offline"}
-              </Badge>
-              <Badge variant="outline">App ID: {AGORA_APP_ID.slice(0, 8)}...</Badge>
-              <Badge variant="outline">
-                {remoteParticipants.length} remote participant{remoteParticipants.length === 1 ? "" : "s"}
-              </Badge>
-            </CardContent>
-          </Card>
+          <Badge variant="outline" className={cn("w-fit rounded-full border px-3 py-1 text-xs font-medium", statusStyles[status])}>
+            <Radio className="mr-1.5 h-3.5 w-3.5" />
+            {status === "idle" ? "Ready" : status === "joining" ? "Joining" : status === "joined" ? "Connected" : "Leaving"}
+          </Badge>
         </div>
 
-        {errorMessage ? (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Session error</AlertTitle>
-            <AlertDescription>{errorMessage}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-          <Card className="border-slate-200/80 bg-white/90 shadow-lg shadow-sky-100/60">
+        <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
+          <Card className="border-slate-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Join controls</CardTitle>
-              <CardDescription>{statusMessage}</CardDescription>
+              <CardTitle>Call controls</CardTitle>
+              <CardDescription>Use the same channel name on another device or browser tab to simulate a collaborative session.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-700">Channel name</span>
-                <Input
-                  autoComplete="off"
-                  disabled={isBusy || isJoined}
-                  onChange={(event) => setChannelName(event.target.value)}
-                  placeholder={DEFAULT_CHANNEL}
-                  value={channelName}
-                />
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-700">Token</span>
-                <Input
-                  autoComplete="off"
-                  disabled={isBusy || isJoined}
-                  onChange={(event) => setToken(event.target.value)}
-                  placeholder="Optional for demo, required later for secured production"
-                  value={token}
-                />
-                <p className="text-xs leading-5 text-slate-500">
-                  Leave blank for this demo. In production, replace it with a backend-issued token per user and
-                  channel.
-                </p>
-              </label>
-
-              <div className="flex flex-wrap gap-3">
-                <Button className="flex-1" disabled={isBusy || isJoined} onClick={() => void handleJoin()}>
-                  {status === "joining" ? (
-                    <>
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      Joining...
-                    </>
-                  ) : (
-                    <>
-                      <Phone className="mr-2 h-4 w-4" />
-                      Join and start
-                    </>
-                  )}
-                </Button>
-                <Button disabled={!isJoined || isBusy} onClick={() => void handleLeave()} variant="outline">
-                  <PhoneOff className="mr-2 h-4 w-4" />
-                  Leave
-                </Button>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700" htmlFor="channelName">Channel name</label>
+                <Input id="channelName" value={channelName} onChange={(event) => setChannelName(event.target.value)} placeholder={DEFAULT_AGORA_CHANNEL} disabled={isBusy} />
               </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700" htmlFor="token">Token (optional)</label>
+                <Input id="token" value={token} onChange={(event) => setToken(event.target.value)} placeholder="Paste Agora token if your project requires one" disabled={isBusy} />
+              </div>
+
+              <Alert className="border-slate-200 bg-slate-50">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Status</AlertTitle>
+                <AlertDescription>{statusMessage}</AlertDescription>
+              </Alert>
+
+              {errorMessage ? (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Could not connect</AlertTitle>
+                  <AlertDescription>{errorMessage}</AlertDescription>
+                </Alert>
+              ) : null}
 
               <div className="grid gap-3 sm:grid-cols-2">
-                <Button disabled={!isJoined || isBusy} onClick={() => void toggleMicrophone()} variant="secondary">
-                  {isMicEnabled ? <MicOff className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
+                <Button onClick={() => void joinCall()} disabled={isJoined || isBusy} className="h-11">
+                  {status === "joining" ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Phone className="mr-2 h-4 w-4" />}
+                  Join call
+                </Button>
+                <Button onClick={() => void leaveCall()} disabled={!isJoined || isBusy} variant="outline" className="h-11 border-slate-300">
+                  <PhoneOff className="mr-2 h-4 w-4" />
+                  Leave call
+                </Button>
+                <Button onClick={() => void toggleMicrophone()} disabled={!isJoined || isBusy} variant="secondary" className="h-11">
+                  {isMicEnabled ? <Mic className="mr-2 h-4 w-4" /> : <MicOff className="mr-2 h-4 w-4" />}
                   {isMicEnabled ? "Mute mic" : "Unmute mic"}
                 </Button>
-                <Button disabled={!isJoined || isBusy} onClick={() => void toggleCamera()} variant="secondary">
-                  {isCameraEnabled ? <CameraOff className="mr-2 h-4 w-4" /> : <Camera className="mr-2 h-4 w-4" />}
-                  {isCameraEnabled ? "Camera off" : "Camera on"}
+                <Button onClick={() => void toggleCamera()} disabled={!isJoined || isBusy} variant="secondary" className="h-11">
+                  {isCameraEnabled ? <Camera className="mr-2 h-4 w-4" /> : <CameraOff className="mr-2 h-4 w-4" />}
+                  {isCameraEnabled ? "Turn camera off" : "Turn camera on"}
                 </Button>
               </div>
 
-              <div className={cn("rounded-xl border px-4 py-3 text-sm", statusStyles[status])}>{statusMessage}</div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-                Open this route in two browsers or on two devices, join the same channel, and the remote tile will
-                populate automatically as soon as the other participant publishes.
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                <p className="font-medium text-slate-950">Shareable route</p>
+                <p className="mt-2 break-all text-xs sm:text-sm">/call?channel={normalizedChannel || DEFAULT_AGORA_CHANNEL}</p>
+                <p className="mt-3 text-xs leading-5 text-slate-500">If your Agora project uses temporary tokens, add the matching token to each participant before joining.</p>
               </div>
 
-              <Button asChild variant="outline" className="w-full">
-                <Link to="/contact">Back to main site</Link>
-              </Button>
+              <Link to="/pdf" className="inline-flex items-center text-sm font-medium text-sky-700 hover:text-sky-800">
+                Open the collaborative PDF workspace <Video className="ml-2 h-4 w-4" />
+              </Link>
             </CardContent>
           </Card>
 
-          <div className="grid gap-6">
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Card className="overflow-hidden border-slate-200/80 bg-white/90 shadow-lg shadow-sky-100/60">
-                <CardHeader>
-                  <CardTitle>Local preview</CardTitle>
-                  <CardDescription>Your camera feed appears here after you join and publish.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="relative aspect-video overflow-hidden rounded-2xl bg-slate-950">
-                    <div className="absolute left-3 top-3 z-10 flex gap-2">
-                      <Badge variant="outline" className="border-white/20 bg-black/35 text-white">
-                        {isMicEnabled && isJoined ? "Mic on" : "Mic muted"}
-                      </Badge>
-                      <Badge variant="outline" className="border-white/20 bg-black/35 text-white">
-                        {isCameraEnabled && isJoined ? "Camera on" : "Camera off"}
-                      </Badge>
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <Card className="overflow-hidden border-slate-200 shadow-sm">
+              <CardHeader>
+                <CardTitle>Local preview</CardTitle>
+                <CardDescription>Your camera feed is rendered here after you join.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-950">
+                  <div ref={localVideoContainerRef} className="aspect-[16/10] w-full" />
+                  {!isJoined ? (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-950/90 text-center text-slate-300">
+                      <Video className="h-10 w-10 text-slate-500" />
+                      <p className="text-sm font-medium">Join the room to preview your camera</p>
                     </div>
-                    <div ref={localVideoContainerRef} className="absolute inset-0" />
-                    {!isJoined || !isCameraEnabled ? (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center text-slate-300">
-                        <Video className="h-10 w-10" />
-                        <div className="space-y-1">
-                          <p className="text-base font-medium">
-                            {isJoined ? "Camera is currently off" : "Join the channel to start local preview"}
-                          </p>
-                          <p className="text-sm text-slate-400">
-                            Your local camera feed will render here once media is active.
-                          </p>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </CardContent>
-              </Card>
+                  ) : null}
+                </div>
+              </CardContent>
+            </Card>
 
-              <Card className="overflow-hidden border-slate-200/80 bg-white/90 shadow-lg shadow-sky-100/60">
-                <CardHeader>
-                  <CardTitle>Remote participants</CardTitle>
-                  <CardDescription>Incoming audio/video tiles appear here when someone joins the same channel.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {remoteParticipants.length === 0 ? (
-                    <div className="flex aspect-video flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 text-center">
-                      <Radio className="mb-3 h-10 w-10 text-slate-400" />
-                      <p className="text-base font-medium text-slate-700">No remote participants yet</p>
-                      <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">
-                        Join the same channel from another device or browser tab to test incoming video and audio.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {remoteParticipants.map((participant) => (
-                        <div
-                          key={participant.uid}
-                          className="relative aspect-video overflow-hidden rounded-2xl border border-slate-200 bg-slate-950"
-                        >
-                          <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-2">
-                            <Badge variant="outline" className="border-white/20 bg-black/35 text-white">
-                              Participant {participant.uid}
-                            </Badge>
-                            <Badge variant="outline" className="border-white/20 bg-black/35 text-white">
-                              {participant.hasAudio ? "Audio" : "No audio"}
-                            </Badge>
+            <Card className="border-slate-200 shadow-sm">
+              <CardHeader>
+                <CardTitle>Remote participants</CardTitle>
+                <CardDescription>Anyone who enters the same channel shows up here.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {remoteParticipants.length === 0 ? (
+                  <div className="flex min-h-[260px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center text-slate-500">
+                    <Phone className="mb-3 h-8 w-8 text-slate-400" />
+                    <p className="text-sm font-medium text-slate-700">No remote participants yet</p>
+                    <p className="mt-2 text-xs leading-5">Open the same channel on another browser window and they’ll appear here. Ghost town for now.</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {remoteParticipants.map((participant) => (
+                      <div key={participant.uid} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 text-sm">
+                          <span className="font-medium text-slate-950">Participant {participant.uid}</span>
+                          <div className="flex items-center gap-2 text-slate-500">
+                            {participant.hasAudio ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                            {participant.hasVideo ? <Camera className="h-4 w-4" /> : <CameraOff className="h-4 w-4" />}
                           </div>
-                          <div
-                            className="absolute inset-0"
-                            ref={(node) => {
-                              remoteVideoRefs.current[participant.uid] = node;
-                            }}
-                          />
+                        </div>
+                        <div className="relative bg-slate-950">
+                          <div ref={(node) => { remoteVideoRefs.current[participant.uid] = node; }} className="aspect-[4/3] w-full" />
                           {!participant.hasVideo ? (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center text-slate-300">
-                              <Video className="h-10 w-10" />
-                              <div className="space-y-1">
-                                <p className="text-base font-medium">Audio-only participant</p>
-                                <p className="text-sm text-slate-400">
-                                  Their audio is live. No remote camera is currently published.
-                                </p>
-                              </div>
-                            </div>
+                            <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-300">Camera off</div>
                           ) : null}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card className="border-slate-200/80 bg-white/90 shadow-lg shadow-sky-100/60">
-              <CardHeader>
-                <CardTitle>Production notes</CardTitle>
-                <CardDescription>This page is ready for a secure token flow without a structural rewrite.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3 text-sm leading-6 text-slate-600 md:grid-cols-3">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  Keep the App ID public in the client and request a short-lived token from your backend before join.
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  Replace the manual token field with an authenticated endpoint keyed to the current user and channel.
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  If your CSP is strict, allow the Agora CDN script source or self-host the SDK with the same helper.
-                </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
         </div>
-
-        <Card className="border-slate-200/80 bg-white/80">
-          <CardContent className="flex flex-col gap-2 p-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
-            <span>Shareable demo route</span>
-            <code className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-800">
-              /call?channel={normalizedChannel || DEFAULT_CHANNEL}
-            </code>
-          </CardContent>
-        </Card>
       </div>
     </section>
   );
