@@ -35,6 +35,9 @@ const Header = () => {
           <Link to="/pricing" className="hover:text-primary">
             Pricing
           </Link>
+          <Link to="/call" className="hover:text-primary">
+            Live Call
+          </Link>
           <Link to="/contact" className="hover:text-primary">
             Contact
           </Link>
@@ -120,6 +123,13 @@ const Header = () => {
               onClick={closeMobileMenu}
             >
               Pricing
+            </Link>
+            <Link
+              to="/call"
+              className="block py-2 text-base font-medium hover:text-primary"
+              onClick={closeMobileMenu}
+            >
+              Live Call
             </Link>
             <Link
               to="/contact"

@@ -37,6 +37,7 @@ import { OrderProvider } from "./contexts/OrderContext"; // Import the OrderProv
 import { QuoteDetailsPage } from "./pages/QuoteDetailsPage"; // Import QuoteDetailsPage
 import FunnelDashboard from "./pages/FunnelDashboard";
 import PdfWorkspacePage from "./pages/PdfWorkspacePage";
+import CallPage from "./pages/CallPage";
 import { Toaster } from "@/components/ui/toaster"; // Import Toaster
 
 function App() {
@@ -77,6 +78,14 @@ function App() {
             element={
               <Layout>
                 <PdfWorkspacePage />
+              </Layout>
+            }
+          />
+          <Route
+            path="/call"
+            element={
+              <Layout>
+                <CallPage />
               </Layout>
             }
           />
