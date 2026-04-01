@@ -10,6 +10,7 @@ import {
   getAgoraErrorMessage,
   loadAgoraRtcSdk,
 } from "@/lib/agoraRtc";
+import { fetchAgoraToken } from "@/utils/agoraTokenApi";
 
 export const DEFAULT_AGORA_CHANNEL = "crediteval-demo";
 
@@ -200,7 +201,8 @@ export function useAgoraCall(options: UseAgoraCallOptions = {}) {
         removeRemoteUser(user.uid);
       });
 
-      await client.join(AGORA_APP_ID, normalizedChannel, normalizedToken || null, null);
+      const tokenToUse = normalizedToken || (await fetchAgoraToken(normalizedChannel)).token;
+      await client.join(AGORA_APP_ID, normalizedChannel, tokenToUse || null, null);
 
       const [microphoneTrack, cameraTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
       localAudioTrackRef.current = microphoneTrack;
