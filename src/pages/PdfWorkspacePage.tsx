@@ -109,6 +109,9 @@ type WorkspacePresence = {
   name: string;
   color: string;
   cursor: { xPercent: number; yPercent: number } | null;
+  activeTool: "navigate" | "annotate";
+  isInCall: boolean;
+  lastActiveAt: string;
   isSelf: boolean;
 };
 
@@ -150,6 +153,8 @@ type AnnotationComposerState = {
   status: AnnotationStatus;
   priority: AnnotationPriority;
 };
+
+type ReviewFilter = "all" | AnnotationStatus;
 
 const defaultAnnotationComposer = (): AnnotationComposerState => ({
   title: "",
@@ -233,6 +238,37 @@ const getInitials = (name: string) =>
     .map((segment) => segment[0]?.toUpperCase() ?? "")
     .join("") || "RV";
 
+const formatRelativeActivity = (value: string) => {
+  const elapsedSeconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
+  if (elapsedSeconds < 10) {
+    return "just now";
+  }
+
+  if (elapsedSeconds < 60) {
+    return `${elapsedSeconds}s ago`;
+  }
+
+  const elapsedMinutes = Math.round(elapsedSeconds / 60);
+  if (elapsedMinutes < 60) {
+    return `${elapsedMinutes}m ago`;
+  }
+
+  const elapsedHours = Math.round(elapsedMinutes / 60);
+  return `${elapsedHours}h ago`;
+};
+
+const buildPresenceSummary = (participant: WorkspacePresence) => {
+  if (participant.cursor) {
+    return `Reviewing page area ${participant.cursor.xPercent.toFixed(1)}%, ${participant.cursor.yPercent.toFixed(1)}%`;
+  }
+
+  if (participant.isInCall) {
+    return participant.activeTool === "annotate" ? "In call and ready to place a review card" : "In call and watching the document";
+  }
+
+  return participant.activeTool === "annotate" ? "Preparing a new review card" : "Watching document";
+};
+
 const normalizeAnnotationRecord = (annotation: Record<string, string | number | null>): AnnotationRecord => ({
   id: String(annotation.id),
   sessionId: String(annotation.session_id),
@@ -263,6 +299,23 @@ const normalizeCommentRecord = (comment: Record<string, string | null>): Comment
   createdAt: String(comment.created_at),
   updatedAt: String(comment.updated_at ?? comment.created_at),
 });
+
+const removeCommentBranch = (records: CommentRecord[], rootId: string) => {
+  const blocked = new Set<string>([rootId]);
+  let didExpand = true;
+
+  while (didExpand) {
+    didExpand = false;
+    records.forEach((record) => {
+      if (record.parentId && blocked.has(record.parentId) && !blocked.has(record.id)) {
+        blocked.add(record.id);
+        didExpand = true;
+      }
+    });
+  }
+
+  return records.filter((record) => !blocked.has(record.id));
+};
 
 function ThreadList({
   comments,
@@ -381,6 +434,7 @@ export default function PdfWorkspacePage() {
   const [annotationReplyParentId, setAnnotationReplyParentId] = useState<string | null>(null);
   const [sessionReplyDraft, setSessionReplyDraft] = useState("");
   const [sessionReplyParentId, setSessionReplyParentId] = useState<string | null>(null);
+  const [reviewFilter, setReviewFilter] = useState<ReviewFilter>("all");
   const [isPresenceReady, setIsPresenceReady] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -469,6 +523,19 @@ export default function PdfWorkspacePage() {
 
     return summary;
   }, [annotations]);
+  const filteredAnnotations = useMemo(
+    () => annotations.filter((annotation) => (reviewFilter === "all" ? true : annotation.status === reviewFilter)),
+    [annotations, reviewFilter],
+  );
+  const sessionActivitySummary = useMemo(() => {
+    const activeOnDocument = presenceParticipants.filter((participant) => participant.cursor).length;
+    const liveInCall = presenceParticipants.filter((participant) => participant.isInCall).length;
+    return {
+      activeOnDocument,
+      liveInCall,
+      drafting: presenceParticipants.filter((participant) => participant.activeTool === "annotate").length,
+    };
+  }, [presenceParticipants]);
 
   useEffect(() => {
     if (!searchParams.get("session")) {
@@ -648,6 +715,9 @@ export default function PdfWorkspacePage() {
         name: string;
         color: string;
         cursor: { xPercent: number; yPercent: number } | null;
+        activeTool?: "navigate" | "annotate";
+        isInCall?: boolean;
+        lastActiveAt?: string;
       }>();
 
       const nextParticipants = Object.values(state)
@@ -657,6 +727,9 @@ export default function PdfWorkspacePage() {
           name: participant.name,
           color: participant.color,
           cursor: participant.cursor,
+          activeTool: participant.activeTool ?? "navigate",
+          isInCall: Boolean(participant.isInCall),
+          lastActiveAt: participant.lastActiveAt ?? new Date().toISOString(),
           isSelf: participant.id === localParticipantId.current,
         }))
         .sort((left, right) => Number(right.isSelf) - Number(left.isSelf) || left.name.localeCompare(right.name));
@@ -766,7 +839,7 @@ export default function PdfWorkspacePage() {
 
           if (payload.eventType === "DELETE") {
             const previous = payload.old as Record<string, string | null>;
-            setComments((current) => current.filter((comment) => comment.id !== previous.id));
+            setComments((current) => removeCommentBranch(current, String(previous.id)));
           }
         },
       )
@@ -781,6 +854,9 @@ export default function PdfWorkspacePage() {
           name: participantName.trim() || "Reviewer",
           color: localParticipantColor,
           cursor: null,
+          activeTool: interactionMode,
+          isInCall: isJoined,
+          lastActiveAt: new Date().toISOString(),
         });
       });
 
@@ -795,7 +871,7 @@ export default function PdfWorkspacePage() {
       presenceChannelRef.current = null;
       void supabase.removeChannel(channel);
     };
-  }, [localParticipantColor, participantName, resolvedSession.sessionId]);
+  }, [interactionMode, isJoined, localParticipantColor, participantName, resolvedSession.sessionId]);
 
   useEffect(() => {
     const channel = presenceChannelRef.current;
@@ -808,8 +884,11 @@ export default function PdfWorkspacePage() {
       name: participantName.trim() || "Reviewer",
       color: localParticipantColor,
       cursor: null,
+      activeTool: interactionMode,
+      isInCall: isJoined,
+      lastActiveAt: new Date().toISOString(),
     });
-  }, [isPresenceReady, localParticipantColor, participantName]);
+  }, [interactionMode, isJoined, isPresenceReady, localParticipantColor, participantName]);
 
   const persistSession = async (
     nextSessionId: string,
@@ -986,6 +1065,9 @@ export default function PdfWorkspacePage() {
       name: participantName.trim() || "Reviewer",
       color: localParticipantColor,
       cursor,
+      activeTool: interactionMode,
+      isInCall: isJoined,
+      lastActiveAt: new Date().toISOString(),
     });
   };
 
@@ -1184,7 +1266,10 @@ export default function PdfWorkspacePage() {
         description: error.message,
         variant: "destructive",
       });
+      return;
     }
+
+    setComments((current) => removeCommentBranch(current, commentId));
   };
 
   const handleCopyInviteLink = async () => {
@@ -1568,24 +1653,47 @@ export default function PdfWorkspacePage() {
                       <p className="mt-2 text-3xl font-semibold text-slate-950">{presenceParticipants.filter((participant) => participant.cursor).length}</p>
                     </div>
                   </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">On document</p>
+                      <p className="mt-2 text-2xl font-semibold text-slate-950">{sessionActivitySummary.activeOnDocument}</p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">In live call</p>
+                      <p className="mt-2 text-2xl font-semibold text-slate-950">{sessionActivitySummary.liveInCall}</p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Drafting reviews</p>
+                      <p className="mt-2 text-2xl font-semibold text-slate-950">{sessionActivitySummary.drafting}</p>
+                    </div>
+                  </div>
                   <div className="space-y-3">
                     {presenceParticipants.length ? presenceParticipants.map((participant) => (
-                      <div key={participant.id} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <Avatar className="h-10 w-10 border border-slate-200">
-                            <AvatarFallback style={{ backgroundColor: `${participant.color}20`, color: participant.color }}>
-                              {getInitials(participant.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="truncate text-sm font-semibold text-slate-950">{participant.name}</p>
-                              {participant.isSelf ? <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">You</Badge> : null}
+                      <div key={participant.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <Avatar className="h-10 w-10 border border-slate-200">
+                              <AvatarFallback style={{ backgroundColor: `${participant.color}20`, color: participant.color }}>
+                                {getInitials(participant.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="truncate text-sm font-semibold text-slate-950">{participant.name}</p>
+                                {participant.isSelf ? <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">You</Badge> : null}
+                                {participant.isInCall ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">In call</Badge> : null}
+                                <Badge variant="outline" className={participant.activeTool === "annotate" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-700"}>
+                                  {participant.activeTool === "annotate" ? "Reviewing" : "Browsing"}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-slate-500">{buildPresenceSummary(participant)}</p>
                             </div>
-                            <p className="text-xs text-slate-500">{participant.cursor ? `Pointer at ${participant.cursor.xPercent.toFixed(1)}%, ${participant.cursor.yPercent.toFixed(1)}%` : "Watching document"}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <p className="text-xs text-slate-400">Active {formatRelativeActivity(participant.lastActiveAt)}</p>
+                            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: participant.color }} />
                           </div>
                         </div>
-                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: participant.color }} />
                       </div>
                     )) : <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">Presence will appear after the realtime channel finishes joining.</div>}
                   </div>
@@ -1703,9 +1811,28 @@ export default function PdfWorkspacePage() {
                         </div>
                       </div>
 
+                      <div className="flex flex-wrap gap-2">
+                        {([
+                          ["all", "All items"],
+                          ["open", "Open"],
+                          ["in_review", "In review"],
+                          ["resolved", "Resolved"],
+                        ] as Array<[ReviewFilter, string]>).map(([value, label]) => (
+                          <Button
+                            key={value}
+                            type="button"
+                            variant={reviewFilter === value ? "default" : "outline"}
+                            className={cn(reviewFilter === value ? "" : "border-slate-300")}
+                            onClick={() => setReviewFilter(value)}
+                          >
+                            {label}
+                          </Button>
+                        ))}
+                      </div>
+
                       <ScrollArea className="h-[280px] rounded-2xl border border-slate-200 bg-white">
                         <div className="space-y-3 p-4">
-                          {annotations.length ? annotations.map((annotation, index) => (
+                          {filteredAnnotations.length ? filteredAnnotations.map((annotation, index) => (
                             <button
                               key={annotation.id}
                               type="button"
@@ -1719,7 +1846,7 @@ export default function PdfWorkspacePage() {
                                 <div className="min-w-0">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold text-white" style={{ backgroundColor: annotation.color }}>
-                                      {index + 1}
+                                      {annotations.findIndex((candidate) => candidate.id === annotation.id) + 1}
                                     </span>
                                     <p className="text-sm font-semibold text-slate-950">{annotation.title || `${annotationTypeConfig[annotation.annotationType].label} ${index + 1}`}</p>
                                     <Badge variant="outline" className={annotationTypeConfig[annotation.annotationType].badge}>{annotationTypeConfig[annotation.annotationType].label}</Badge>
@@ -1736,7 +1863,7 @@ export default function PdfWorkspacePage() {
                                 </div>
                               </div>
                             </button>
-                          )) : <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">No shared review cards yet. Drop one on the PDF to start the queue.</div>}
+                          )) : <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">{annotations.length ? "No review cards match the current filter." : "No shared review cards yet. Drop one on the PDF to start the queue."}</div>}
                         </div>
                       </ScrollArea>
 
