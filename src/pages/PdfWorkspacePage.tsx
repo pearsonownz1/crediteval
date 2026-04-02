@@ -1,4 +1,4 @@
-import { ChangeEvent, DragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import EmbedPDF from "@embedpdf/snippet";
 import {
@@ -9,25 +9,20 @@ import {
   Copy,
   Download,
   ExternalLink,
-  FileBadge2,
+  FileSignature,
   FileText,
   Link2,
   Loader2,
   MessageSquare,
-  MessageSquareReply,
   Mic,
   MicOff,
-  MousePointer2,
   PenLine,
   Phone,
   PhoneOff,
-  Radio,
   RefreshCw,
   Save,
   Send,
   ShieldCheck,
-  Sparkles,
-  Trash2,
   Upload,
   Video,
 } from "lucide-react";
@@ -58,46 +53,34 @@ import { supabase } from "@/lib/supabaseClient";
 import { cn } from "@/lib/utils";
 
 const STORAGE_BUCKET = "pdf-collab";
-const PARTICIPANT_PROFILE_ID_STORAGE_KEY = "pdf-collab-participant-profile-id";
-const PARTICIPANT_INSTANCE_ID_STORAGE_KEY = "pdf-collab-participant-instance-id";
-const PARTICIPANT_NAME_STORAGE_KEY = "pdf-collab-participant-name";
-const CURSOR_BROADCAST_INTERVAL_MS = 120;
-const COLLABORATION_POLL_INTERVAL_MS = 900;
-const PARTICIPANT_POLL_INTERVAL_MS = 450;
-const PARTICIPANT_HEARTBEAT_INTERVAL_MS = 2000;
-const PARTICIPANT_STALE_AFTER_MS = 8000;
-const PARTICIPANT_COLORS = ["#0f766e", "#2563eb", "#c2410c", "#7c3aed", "#be123c", "#059669", "#0891b2", "#ca8a04", "#4338ca", "#ea580c"];
+const PARTICIPANT_NAME_STORAGE_KEY = "pdf-signature-participant-name";
+const COLLABORATION_POLL_INTERVAL_MS = 1200;
 
-const statusStyles = {
-  idle: "border-slate-200 bg-slate-50 text-slate-700",
-  joining: "border-sky-200 bg-sky-50 text-sky-700",
-  joined: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  leaving: "border-amber-200 bg-amber-50 text-amber-700",
+const flagTypeConfig = {
+  sign: {
+    label: "Sign here",
+    shortLabel: "Sign",
+    marker: "S",
+    accent: "#0f172a",
+    badge: "border-slate-200 bg-slate-50 text-slate-700",
+  },
+  initial: {
+    label: "Initial here",
+    shortLabel: "Initial",
+    marker: "I",
+    accent: "#9a3412",
+    badge: "border-orange-200 bg-orange-50 text-orange-700",
+  },
+  date: {
+    label: "Date here",
+    shortLabel: "Date",
+    marker: "D",
+    accent: "#1d4ed8",
+    badge: "border-sky-200 bg-sky-50 text-sky-700",
+  },
 } as const;
 
-const annotationTypeConfig = {
-  comment: { label: "Comment", marker: "C", badge: "border-slate-200 bg-slate-50 text-slate-700" },
-  question: { label: "Question", marker: "?", badge: "border-sky-200 bg-sky-50 text-sky-700" },
-  issue: { label: "Issue", marker: "!", badge: "border-rose-200 bg-rose-50 text-rose-700" },
-  approval: { label: "Approval", marker: "OK", badge: "border-emerald-200 bg-emerald-50 text-emerald-700" },
-} as const;
-
-const annotationStatusConfig = {
-  open: { label: "Open", badge: "border-slate-200 bg-slate-50 text-slate-700" },
-  in_review: { label: "In review", badge: "border-amber-200 bg-amber-50 text-amber-700" },
-  resolved: { label: "Resolved", badge: "border-emerald-200 bg-emerald-50 text-emerald-700" },
-} as const;
-
-const annotationPriorityConfig = {
-  low: { label: "Low", badge: "border-slate-200 bg-slate-50 text-slate-700" },
-  normal: { label: "Normal", badge: "border-sky-200 bg-sky-50 text-sky-700" },
-  high: { label: "High", badge: "border-orange-200 bg-orange-50 text-orange-700" },
-  urgent: { label: "Urgent", badge: "border-rose-200 bg-rose-50 text-rose-700" },
-} as const;
-
-type AnnotationType = keyof typeof annotationTypeConfig;
-type AnnotationStatus = keyof typeof annotationStatusConfig;
-type AnnotationPriority = keyof typeof annotationPriorityConfig;
+type SignatureFlagType = keyof typeof flagTypeConfig;
 
 type SessionDocument = {
   sessionId: string;
@@ -109,47 +92,23 @@ type SessionDocument = {
   uploadedAt: string | null;
 };
 
-type WorkspacePresence = {
-  id: string;
-  name: string;
-  color: string;
-  cursor: { xPercent: number; yPercent: number } | null;
-  activeTool: "pointer" | "pin";
-  isInCall: boolean;
-  lastActiveAt: string;
-  isSelf: boolean;
-};
-
-type ParticipantRow = {
-  instance_id: string;
-  session_id: string;
-  profile_id: string;
-  name: string;
-  color: string;
-  active_tool: "pointer" | "pin" | null;
-  cursor_x_percent: number | null;
-  cursor_y_percent: number | null;
-  is_in_call: boolean | null;
-  joined_at: string;
-  last_heartbeat_at: string;
-};
-
-type AnnotationRecord = {
+type SignatureFlagRecord = {
   id: string;
   sessionId: string;
-  authorId: string;
-  authorName: string;
-  color: string;
-  title: string | null;
-  body: string | null;
-  annotationType: AnnotationType;
-  status: AnnotationStatus;
-  priority: AnnotationPriority;
+  documentStoragePath: string | null;
+  createdByName: string;
+  createdById: string;
+  flagType: SignatureFlagType;
+  label: string | null;
   xPercent: number;
   yPercent: number;
+  signedByName: string | null;
+  signedByText: string | null;
+  signedAt: string | null;
+  signerProfileId: string | null;
+  signerNote: string | null;
   createdAt: string;
   updatedAt: string;
-  resolvedAt: string | null;
 };
 
 type CommentRecord = {
@@ -165,22 +124,26 @@ type CommentRecord = {
   updatedAt: string;
 };
 
-type AnnotationComposerState = {
-  title: string;
-  body: string;
-  annotationType: AnnotationType;
-  status: AnnotationStatus;
-  priority: AnnotationPriority;
+type PlacementDraft = {
+  flagType: SignatureFlagType;
+  label: string;
 };
 
-type ReviewFilter = "all" | AnnotationStatus;
+type SignDraft = {
+  signerName: string;
+  signatureText: string;
+  note: string;
+};
 
-const defaultAnnotationComposer = (): AnnotationComposerState => ({
-  title: "",
-  body: "",
-  annotationType: "comment",
-  status: "open",
-  priority: "normal",
+const defaultPlacementDraft = (): PlacementDraft => ({
+  flagType: "sign",
+  label: "",
+});
+
+const defaultSignDraft = (participantName: string): SignDraft => ({
+  signerName: participantName,
+  signatureText: participantName,
+  note: "",
 });
 
 const formatFileSize = (bytes: number) => {
@@ -192,9 +155,7 @@ const formatFileSize = (bytes: number) => {
 };
 
 const formatUploadedAt = (value: string | null) => {
-  if (!value) {
-    return "Not uploaded yet";
-  }
+  if (!value) return "Not uploaded yet";
 
   return new Date(value).toLocaleString("en-US", {
     month: "short",
@@ -220,48 +181,27 @@ const safeFileName = (value: string) =>
     .replace(/-{2,}/g, "-")
     .replace(/^-+|-+$/g, "");
 
-const getStoredParticipantProfileId = () => {
-  if (typeof window === "undefined") {
-    return "reviewer";
-  }
-
-  const existingId = window.localStorage.getItem(PARTICIPANT_PROFILE_ID_STORAGE_KEY);
-  if (existingId) {
-    return existingId;
-  }
-
-  const nextId = `reviewer-${createSessionId()}`;
-  window.localStorage.setItem(PARTICIPANT_PROFILE_ID_STORAGE_KEY, nextId);
-  return nextId;
-};
-
-const getParticipantInstanceId = () => {
-  if (typeof window === "undefined") {
-    return "reviewer-instance";
-  }
-
-  const existingId = window.sessionStorage.getItem(PARTICIPANT_INSTANCE_ID_STORAGE_KEY);
-  if (existingId) {
-    return existingId;
-  }
-
-  const nextId = `reviewer-instance-${createSessionId()}`;
-  window.sessionStorage.setItem(PARTICIPANT_INSTANCE_ID_STORAGE_KEY, nextId);
-  return nextId;
-};
-
 const getStoredParticipantName = () => {
   if (typeof window === "undefined") {
-    return "Reviewer";
+    return "Signer";
   }
 
   const existingName = window.localStorage.getItem(PARTICIPANT_NAME_STORAGE_KEY);
-  return existingName?.trim() || `Reviewer ${Math.random().toString(36).slice(2, 4).toUpperCase()}`;
+  return existingName?.trim() || `Signer ${Math.random().toString(36).slice(2, 4).toUpperCase()}`;
 };
 
-const getParticipantColor = (seed: string) => {
-  const hash = seed.split("").reduce((accumulator, character) => accumulator + character.charCodeAt(0), 0);
-  return PARTICIPANT_COLORS[hash % PARTICIPANT_COLORS.length];
+const getParticipantProfileId = () => {
+  if (typeof window === "undefined") {
+    return "signer-server";
+  }
+
+  const storageKey = "pdf-signature-profile-id";
+  const existing = window.localStorage.getItem(storageKey);
+  if (existing) return existing;
+
+  const next = `signer-${createSessionId()}`;
+  window.localStorage.setItem(storageKey, next);
+  return next;
 };
 
 const getInitials = (name: string) =>
@@ -270,78 +210,7 @@ const getInitials = (name: string) =>
     .filter(Boolean)
     .slice(0, 2)
     .map((segment) => segment[0]?.toUpperCase() ?? "")
-    .join("") || "RV";
-
-const formatRelativeActivity = (value: string) => {
-  const elapsedSeconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
-  if (elapsedSeconds < 10) {
-    return "just now";
-  }
-
-  if (elapsedSeconds < 60) {
-    return `${elapsedSeconds}s ago`;
-  }
-
-  const elapsedMinutes = Math.round(elapsedSeconds / 60);
-  if (elapsedMinutes < 60) {
-    return `${elapsedMinutes}m ago`;
-  }
-
-  const elapsedHours = Math.round(elapsedMinutes / 60);
-  return `${elapsedHours}h ago`;
-};
-
-const buildPresenceParticipants = (records: ParticipantRow[], selfId: string): WorkspacePresence[] =>
-  records
-    .slice()
-    .sort((left, right) => left.joined_at.localeCompare(right.joined_at) || left.instance_id.localeCompare(right.instance_id))
-    .map((participant) => ({
-      id: participant.instance_id,
-      name: participant.name,
-      color: participant.color,
-      cursor:
-        participant.cursor_x_percent === null || participant.cursor_y_percent === null
-          ? null
-          : {
-              xPercent: Number(participant.cursor_x_percent),
-              yPercent: Number(participant.cursor_y_percent),
-            },
-      activeTool: (participant.active_tool === "pin" ? "pin" : "pointer") as WorkspacePresence["activeTool"],
-      isInCall: Boolean(participant.is_in_call),
-      lastActiveAt: participant.last_heartbeat_at,
-      isSelf: participant.instance_id === selfId,
-    }))
-    .sort((left, right) => Number(right.isSelf) - Number(left.isSelf) || left.name.localeCompare(right.name));
-
-const buildPresenceSummary = (participant: WorkspacePresence) => {
-  if (participant.cursor) {
-    return `Pointer on document at ${participant.cursor.xPercent.toFixed(1)}%, ${participant.cursor.yPercent.toFixed(1)}%`;
-  }
-
-  if (participant.isInCall) {
-    return participant.activeTool === "pin" ? "In call and ready to place a pin" : "In call and following the document";
-  }
-
-  return participant.activeTool === "pin" ? "Ready to place a pin" : "Watching document";
-};
-
-const normalizeAnnotationRecord = (annotation: Record<string, string | number | null>): AnnotationRecord => ({
-  id: String(annotation.id),
-  sessionId: String(annotation.session_id),
-  authorId: String(annotation.author_id),
-  authorName: String(annotation.author_name),
-  color: String(annotation.color),
-  title: (annotation.title as string | null) ?? null,
-  body: (annotation.body as string | null) ?? null,
-  annotationType: ((annotation.annotation_type as AnnotationType | null) ?? "comment"),
-  status: ((annotation.status as AnnotationStatus | null) ?? "open"),
-  priority: ((annotation.priority as AnnotationPriority | null) ?? "normal"),
-  xPercent: Number(annotation.x_percent),
-  yPercent: Number(annotation.y_percent),
-  createdAt: String(annotation.created_at),
-  updatedAt: String(annotation.updated_at ?? annotation.created_at),
-  resolvedAt: (annotation.resolved_at as string | null) ?? null,
-});
+    .join("") || "SG";
 
 const normalizeCommentRecord = (comment: Record<string, string | null>): CommentRecord => ({
   id: String(comment.id),
@@ -354,6 +223,25 @@ const normalizeCommentRecord = (comment: Record<string, string | null>): Comment
   body: String(comment.body ?? ""),
   createdAt: String(comment.created_at),
   updatedAt: String(comment.updated_at ?? comment.created_at),
+});
+
+const normalizeSignatureFlagRecord = (flag: Record<string, string | number | null>): SignatureFlagRecord => ({
+  id: String(flag.id),
+  sessionId: String(flag.session_id),
+  documentStoragePath: (flag.document_storage_path as string | null) ?? null,
+  createdByName: String(flag.created_by_name),
+  createdById: String(flag.created_by_id),
+  flagType: ((flag.flag_type as SignatureFlagType | null) ?? "sign"),
+  label: (flag.label as string | null) ?? null,
+  xPercent: Number(flag.x_percent),
+  yPercent: Number(flag.y_percent),
+  signedByName: (flag.signed_by_name as string | null) ?? null,
+  signedByText: (flag.signed_by_text as string | null) ?? null,
+  signedAt: (flag.signed_at as string | null) ?? null,
+  signerProfileId: (flag.signer_profile_id as string | null) ?? null,
+  signerNote: (flag.signer_note as string | null) ?? null,
+  createdAt: String(flag.created_at),
+  updatedAt: String(flag.updated_at ?? flag.created_at),
 });
 
 const removeCommentBranch = (records: CommentRecord[], rootId: string) => {
@@ -399,9 +287,9 @@ function ThreadList({
     return groups;
   }, [comments]);
 
-  const renderBranch = (parentId: string | null, depth: number) =>
+  const renderBranch = (parentId: string | null, depth: number): JSX.Element[] =>
     (commentsByParent.get(parentId) ?? []).map((comment) => (
-      <div key={comment.id} className={cn("space-y-3", depth > 0 ? "ml-5 border-l border-slate-200 pl-4" : "")}>
+      <div key={comment.id} className={cn("space-y-3", depth > 0 ? "ml-5 border-l border-slate-200 pl-4" : "")}> 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
@@ -412,18 +300,19 @@ function ThreadList({
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-semibold text-slate-950">{comment.authorName}</p>
                   <span className="text-xs text-slate-400">{formatTimelineTimestamp(comment.createdAt)}</span>
-                  {comment.updatedAt !== comment.createdAt ? <Badge variant="outline" className="border-slate-200 text-[11px] text-slate-500">Edited</Badge> : null}
                 </div>
                 <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{comment.body}</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="sm" className="h-8 px-2 text-slate-500" onClick={() => { setReplyParentId(comment.id); setReplyDraft(""); }}>
-                <MessageSquareReply className="mr-1 h-3.5 w-3.5" />
+              <Button variant="ghost" size="sm" className="h-8 px-2 text-slate-500" onClick={() => {
+                setReplyParentId(comment.id);
+                setReplyDraft("");
+              }}>
                 Reply
               </Button>
               <Button variant="ghost" size="sm" className="h-8 px-2 text-slate-500" onClick={() => void onDeleteComment(comment.id)}>
-                <Trash2 className="h-3.5 w-3.5" />
+                Delete
               </Button>
             </div>
           </div>
@@ -442,7 +331,10 @@ function ThreadList({
                 className="min-h-[92px] border-slate-200 bg-slate-50"
               />
               <div className="flex items-center justify-end gap-2">
-                <Button type="button" variant="ghost" className="text-slate-500" onClick={() => { setReplyParentId(null); setReplyDraft(""); }}>
+                <Button type="button" variant="ghost" className="text-slate-500" onClick={() => {
+                  setReplyParentId(null);
+                  setReplyDraft("");
+                }}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={!replyDraft.trim()}>
@@ -466,15 +358,7 @@ export default function PdfWorkspacePage() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const viewerHostRef = useRef<HTMLDivElement | null>(null);
-  const cursorSentAtRef = useRef(0);
-  const cursorTimeoutRef = useRef<number | null>(null);
-  const pendingCursorRef = useRef<{ xPercent: number; yPercent: number } | null>(null);
-  const localParticipantProfileId = useRef(getStoredParticipantProfileId());
-  const localParticipantInstanceId = useRef(getParticipantInstanceId());
-  const participantNameRef = useRef(getStoredParticipantName());
-  const interactionModeRef = useRef<"pointer" | "pin">("pointer");
-  const isJoinedRef = useRef(false);
-  const latestPresenceRef = useRef<WorkspacePresence[]>([]);
+  const participantProfileId = useRef(getParticipantProfileId());
 
   const [isDragging, setIsDragging] = useState(false);
   const [sessionIdInput, setSessionIdInput] = useState(resolvedSession.sessionId);
@@ -482,24 +366,19 @@ export default function PdfWorkspacePage() {
   const [participantName, setParticipantName] = useState(getStoredParticipantName);
   const [documentRecord, setDocumentRecord] = useState<SessionDocument | null>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
-  const [presenceParticipants, setPresenceParticipants] = useState<WorkspacePresence[]>([]);
-  const [annotations, setAnnotations] = useState<AnnotationRecord[]>([]);
+  const [signatureFlags, setSignatureFlags] = useState<SignatureFlagRecord[]>([]);
   const [comments, setComments] = useState<CommentRecord[]>([]);
-  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
-  const [interactionMode, setInteractionMode] = useState<"pointer" | "pin">("pointer");
-  const [annotationComposer, setAnnotationComposer] = useState<AnnotationComposerState>(defaultAnnotationComposer);
-  const [selectedAnnotationDraft, setSelectedAnnotationDraft] = useState<AnnotationComposerState>(defaultAnnotationComposer);
+  const [selectedFlagId, setSelectedFlagId] = useState<string | null>(null);
+  const [placementMode, setPlacementMode] = useState(false);
+  const [placementDraft, setPlacementDraft] = useState<PlacementDraft>(defaultPlacementDraft);
+  const [signDraft, setSignDraft] = useState<SignDraft>(defaultSignDraft(getStoredParticipantName()));
   const [sessionNoteDraft, setSessionNoteDraft] = useState("");
-  const [annotationReplyDraft, setAnnotationReplyDraft] = useState("");
-  const [annotationReplyParentId, setAnnotationReplyParentId] = useState<string | null>(null);
   const [sessionReplyDraft, setSessionReplyDraft] = useState("");
   const [sessionReplyParentId, setSessionReplyParentId] = useState<string | null>(null);
-  const [reviewFilter, setReviewFilter] = useState<ReviewFilter>("all");
   const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [isSavingAnnotation, setIsSavingAnnotation] = useState(false);
+  const [isSavingFlag, setIsSavingFlag] = useState(false);
   const [sessionError, setSessionError] = useState("");
-  const [collaborationStatus, setCollaborationStatus] = useState<"connecting" | "connected" | "retrying" | "failed">("connecting");
   const [collaborationError, setCollaborationError] = useState("");
   const { toast } = useToast();
 
@@ -524,27 +403,20 @@ export default function PdfWorkspacePage() {
   } = useAgoraCall({
     initialChannel: resolvedSession.channelName || DEFAULT_AGORA_CHANNEL,
     initialToken: resolvedSession.token,
-    readyMessage: "Ready to bring reviewers into the room. Share the invite link so they land in the same PDF session and Agora channel.",
+    readyMessage: "Ready to review the document together. Share the session link so everyone lands on the same PDF.",
     joinedMessage: (channel) => `Connected to "${channel}". Everyone on the shared session link joins this same call room.`,
-    leftMessage: "Call ended. The shared PDF session is still live, and you can rejoin whenever you need.",
+    leftMessage: "Call ended. The shared PDF session is still live.",
   });
 
-  const localParticipantColor = useMemo(
-    () => presenceParticipants.find((participant) => participant.id === localParticipantInstanceId.current)?.color ?? getParticipantColor(localParticipantProfileId.current),
-    [presenceParticipants],
+  const selectedFlag = useMemo(
+    () => signatureFlags.find((flag) => flag.id === selectedFlagId) ?? null,
+    [signatureFlags, selectedFlagId],
   );
-  const selectedAnnotation = useMemo(
-    () => annotations.find((annotation) => annotation.id === selectedAnnotationId) ?? null,
-    [annotations, selectedAnnotationId],
-  );
-  const otherParticipants = useMemo(
-    () => presenceParticipants.filter((participant) => !participant.isSelf),
-    [presenceParticipants],
-  );
+  const sessionChat = useMemo(() => comments.filter((comment) => comment.annotationId === null), [comments]);
+  const signedCount = useMemo(() => signatureFlags.filter((flag) => flag.signedAt).length, [signatureFlags]);
+  const pendingCount = signatureFlags.length - signedCount;
   const metadata = useMemo(() => {
-    if (!documentRecord) {
-      return null;
-    }
+    if (!documentRecord) return null;
 
     return {
       name: documentRecord.originalFilename ?? "Awaiting upload",
@@ -552,87 +424,12 @@ export default function PdfWorkspacePage() {
       uploadedAt: formatUploadedAt(documentRecord.uploadedAt),
     };
   }, [documentRecord]);
-  const annotationComments = useMemo(
-    () => comments.filter((comment) => comment.annotationId === selectedAnnotationId),
-    [comments, selectedAnnotationId],
-  );
-  const sessionChat = useMemo(
-    () => comments.filter((comment) => comment.annotationId === null),
-    [comments],
-  );
-  const annotationCommentCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    comments.forEach((comment) => {
-      if (!comment.annotationId) {
-        return;
-      }
-      counts.set(comment.annotationId, (counts.get(comment.annotationId) ?? 0) + 1);
-    });
-    return counts;
-  }, [comments]);
-  const annotationSummary = useMemo(() => {
-    const summary = {
-      open: 0,
-      inReview: 0,
-      resolved: 0,
-      urgent: 0,
-    };
-
-    annotations.forEach((annotation) => {
-      if (annotation.status === "open") summary.open += 1;
-      if (annotation.status === "in_review") summary.inReview += 1;
-      if (annotation.status === "resolved") summary.resolved += 1;
-      if (annotation.priority === "urgent") summary.urgent += 1;
-    });
-
-    return summary;
-  }, [annotations]);
-  const filteredAnnotations = useMemo(
-    () => annotations.filter((annotation) => (reviewFilter === "all" ? true : annotation.status === reviewFilter)),
-    [annotations, reviewFilter],
-  );
-  const sessionActivitySummary = useMemo(() => {
-    const activeOnDocument = presenceParticipants.filter((participant) => participant.cursor).length;
-    const liveInCall = presenceParticipants.filter((participant) => participant.isInCall).length;
-    return {
-      activeOnDocument,
-      liveInCall,
-      drafting: presenceParticipants.filter((participant) => participant.activeTool === "pin").length,
-    };
-  }, [presenceParticipants]);
-
-  const upsertAnnotationState = (record: AnnotationRecord) => {
-    setAnnotations((current) => {
-      const existingIndex = current.findIndex((annotation) => annotation.id === record.id);
-      if (existingIndex === -1) {
-        return [...current, record].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-      }
-
-      const next = [...current];
-      next[existingIndex] = record;
-      return next;
-    });
-  };
-
-  const upsertCommentState = (record: CommentRecord) => {
-    setComments((current) => {
-      const existingIndex = current.findIndex((comment) => comment.id === record.id);
-      if (existingIndex === -1) {
-        return [...current, record].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-      }
-
-      const next = [...current];
-      next[existingIndex] = record;
-      return next;
-    });
-  };
 
   useEffect(() => {
     if (!searchParams.get("session")) {
       const nextSessionId = normalizeSessionId(searchParams.get("channel") || createSessionId());
       const nextSessionName = normalizeSessionName(searchParams.get("name"), nextSessionId);
       const nextToken = (searchParams.get("token") || "").trim();
-
       setSearchParams(buildSessionSearchParams(nextSessionId, nextSessionName, nextToken), { replace: true });
     }
   }, [searchParams, setSearchParams]);
@@ -645,27 +442,20 @@ export default function PdfWorkspacePage() {
   }, [resolvedSession.channelName, resolvedSession.sessionId, resolvedSession.sessionName, resolvedSession.token, setChannelName, setToken]);
 
   useEffect(() => {
-    window.localStorage.setItem(PARTICIPANT_NAME_STORAGE_KEY, participantName.trim() || "Reviewer");
-    participantNameRef.current = participantName.trim() || "Reviewer";
+    window.localStorage.setItem(PARTICIPANT_NAME_STORAGE_KEY, participantName.trim() || "Signer");
+    setSignDraft((current) => ({
+      ...current,
+      signerName: current.signerName ? current.signerName : participantName.trim() || "Signer",
+      signatureText: current.signatureText ? current.signatureText : participantName.trim() || "Signer",
+    }));
   }, [participantName]);
-
-  useEffect(() => {
-    interactionModeRef.current = interactionMode;
-  }, [interactionMode]);
-
-  useEffect(() => {
-    isJoinedRef.current = isJoined;
-  }, [isJoined]);
 
   useEffect(() => {
     let isActive = true;
     let isFetching = false;
 
     const loadSession = async () => {
-      if (isFetching) {
-        return;
-      }
-
+      if (isFetching) return;
       isFetching = true;
 
       const { data, error } = await supabase
@@ -674,9 +464,7 @@ export default function PdfWorkspacePage() {
         .eq("session_id", resolvedSession.sessionId)
         .maybeSingle();
 
-      if (!isActive) {
-        return;
-      }
+      if (!isActive) return;
 
       if (error) {
         setSessionError(error.message);
@@ -697,9 +485,6 @@ export default function PdfWorkspacePage() {
         };
         setDocumentRecord(nextRecord);
         setViewerUrl(nextRecord.publicUrl);
-        if (data.session_name && data.session_name !== resolvedSession.sessionName) {
-          setSessionNameInput(data.session_name);
-        }
       } else {
         setDocumentRecord({
           sessionId: resolvedSession.sessionId,
@@ -730,34 +515,24 @@ export default function PdfWorkspacePage() {
   }, [resolvedSession.sessionId, resolvedSession.sessionName]);
 
   useEffect(() => {
-    setAnnotations([]);
-    setComments([]);
-    setSelectedAnnotationId(null);
-    setSelectedAnnotationDraft(defaultAnnotationComposer());
-    setAnnotationReplyDraft("");
-    setAnnotationReplyParentId(null);
-    setSessionReplyDraft("");
-    setSessionReplyParentId(null);
-
     let isMounted = true;
     let isFetching = false;
 
-    const loadReviewState = async () => {
-      if (isFetching) {
-        return;
-      }
-
+    const loadSharedState = async () => {
+      if (isFetching) return;
       isFetching = true;
-      const [{ data: annotationData, error: annotationError }, { data: commentData, error: commentError }] = await Promise.all([
+
+      const [{ data: flagData, error: flagError }, { data: commentData, error: commentError }] = await Promise.all([
         supabase
-          .from("pdf_collab_annotations")
-          .select("id, session_id, author_id, author_name, color, title, body, annotation_type, status, priority, x_percent, y_percent, created_at, updated_at, resolved_at")
+          .from("pdf_signature_flags")
+          .select("id, session_id, document_storage_path, created_by_name, created_by_id, flag_type, label, x_percent, y_percent, signed_by_name, signed_by_text, signed_at, signer_profile_id, signer_note, created_at, updated_at")
           .eq("session_id", resolvedSession.sessionId)
           .order("created_at", { ascending: true }),
         supabase
           .from("pdf_collab_comments")
           .select("id, session_id, annotation_id, parent_id, author_id, author_name, color, body, created_at, updated_at")
           .eq("session_id", resolvedSession.sessionId)
+          .is("annotation_id", null)
           .order("created_at", { ascending: true }),
       ]);
 
@@ -766,8 +541,11 @@ export default function PdfWorkspacePage() {
         return;
       }
 
-      if (!annotationError) {
-        setAnnotations((annotationData || []).map((annotation) => normalizeAnnotationRecord(annotation as unknown as Record<string, string | number | null>)));
+      if (flagError) {
+        setCollaborationError(flagError.message);
+      } else {
+        setCollaborationError("");
+        setSignatureFlags((flagData || []).map((flag) => normalizeSignatureFlagRecord(flag as unknown as Record<string, string | number | null>)));
       }
 
       if (!commentError) {
@@ -777,9 +555,13 @@ export default function PdfWorkspacePage() {
       isFetching = false;
     };
 
-    void loadReviewState();
+    setSignatureFlags([]);
+    setComments([]);
+    setSelectedFlagId(null);
+
+    void loadSharedState();
     const intervalId = window.setInterval(() => {
-      void loadReviewState();
+      void loadSharedState();
     }, COLLABORATION_POLL_INTERVAL_MS);
 
     return () => {
@@ -789,31 +571,25 @@ export default function PdfWorkspacePage() {
   }, [resolvedSession.sessionId]);
 
   useEffect(() => {
-    if (!selectedAnnotation) {
-      setSelectedAnnotationDraft(defaultAnnotationComposer());
+    if (!selectedFlag) {
+      setSignDraft(defaultSignDraft(participantName.trim() || "Signer"));
       return;
     }
 
-    setSelectedAnnotationDraft({
-      title: selectedAnnotation.title ?? "",
-      body: selectedAnnotation.body ?? "",
-      annotationType: selectedAnnotation.annotationType,
-      status: selectedAnnotation.status,
-      priority: selectedAnnotation.priority,
+    setSignDraft({
+      signerName: selectedFlag.signedByName || participantName.trim() || "Signer",
+      signatureText: selectedFlag.signedByText || participantName.trim() || "Signer",
+      note: selectedFlag.signerNote || "",
     });
-  }, [selectedAnnotation]);
+  }, [participantName, selectedFlag]);
 
   useEffect(() => {
-    if (!viewerHostRef.current) {
-      return;
-    }
+    if (!viewerHostRef.current) return;
 
     const host = viewerHostRef.current;
     host.innerHTML = "";
 
-    if (!viewerUrl) {
-      return;
-    }
+    if (!viewerUrl) return;
 
     EmbedPDF.init({
       type: "container",
@@ -825,139 +601,6 @@ export default function PdfWorkspacePage() {
       host.innerHTML = "";
     };
   }, [viewerUrl]);
-
-  useEffect(() => {
-    let isActive = true;
-    let isPolling = false;
-    let isHeartbeatInFlight = false;
-
-    const writeParticipantState = async (cursor: { xPercent: number; yPercent: number } | null) => {
-      if (isHeartbeatInFlight) {
-        return;
-      }
-
-      isHeartbeatInFlight = true;
-      const { error } = await supabase.from("pdf_collab_participants").upsert(
-        {
-          instance_id: localParticipantInstanceId.current,
-          session_id: resolvedSession.sessionId,
-          profile_id: localParticipantProfileId.current,
-          name: participantNameRef.current,
-          active_tool: interactionModeRef.current,
-          is_in_call: isJoinedRef.current,
-          cursor_x_percent: cursor?.xPercent ?? null,
-          cursor_y_percent: cursor?.yPercent ?? null,
-          last_heartbeat_at: new Date().toISOString(),
-        },
-        { onConflict: "instance_id" },
-      );
-
-      isHeartbeatInFlight = false;
-
-      if (!isActive) {
-        return;
-      }
-
-      if (error) {
-        setCollaborationStatus("retrying");
-        setCollaborationError(error.message);
-      } else {
-        setCollaborationStatus("connected");
-        setCollaborationError("");
-      }
-    };
-
-    const pollParticipants = async () => {
-      if (isPolling) {
-        return;
-      }
-
-      isPolling = true;
-      const cutoff = new Date(Date.now() - PARTICIPANT_STALE_AFTER_MS).toISOString();
-      const { data, error } = await supabase
-        .from("pdf_collab_participants")
-        .select("instance_id, session_id, profile_id, name, active_tool, is_in_call, cursor_x_percent, cursor_y_percent, last_heartbeat_at, joined_at")
-        .eq("session_id", resolvedSession.sessionId)
-        .gte("last_heartbeat_at", cutoff)
-        .order("joined_at", { ascending: true });
-
-      isPolling = false;
-
-      if (!isActive) {
-        return;
-      }
-
-      if (error) {
-        setCollaborationStatus("retrying");
-        setCollaborationError(error.message);
-        return;
-      }
-
-      const nextParticipants = buildPresenceParticipants(
-        (data || []) as ParticipantRow[],
-        localParticipantInstanceId.current,
-      );
-
-      latestPresenceRef.current = nextParticipants;
-      setPresenceParticipants(nextParticipants);
-      setCollaborationStatus("connected");
-      setCollaborationError("");
-    };
-
-    setPresenceParticipants([]);
-    setCollaborationStatus("connecting");
-    setCollaborationError("");
-
-    void writeParticipantState(pendingCursorRef.current);
-    void pollParticipants();
-
-    const heartbeatIntervalId = window.setInterval(() => {
-      void writeParticipantState(pendingCursorRef.current);
-    }, PARTICIPANT_HEARTBEAT_INTERVAL_MS);
-    const participantPollIntervalId = window.setInterval(() => {
-      void pollParticipants();
-    }, PARTICIPANT_POLL_INTERVAL_MS);
-
-    return () => {
-      if (cursorTimeoutRef.current) {
-        window.clearTimeout(cursorTimeoutRef.current);
-        cursorTimeoutRef.current = null;
-      }
-
-      window.clearInterval(heartbeatIntervalId);
-      window.clearInterval(participantPollIntervalId);
-      void supabase.from("pdf_collab_participants").delete().eq("instance_id", localParticipantInstanceId.current);
-      setPresenceParticipants([]);
-      latestPresenceRef.current = [];
-      isActive = false;
-    };
-  }, [resolvedSession.sessionId]);
-
-  useEffect(() => {
-    void supabase.from("pdf_collab_participants").upsert(
-      {
-        instance_id: localParticipantInstanceId.current,
-        session_id: resolvedSession.sessionId,
-        profile_id: localParticipantProfileId.current,
-        name: participantNameRef.current,
-        active_tool: interactionMode,
-        is_in_call: isJoined,
-        cursor_x_percent: pendingCursorRef.current?.xPercent ?? null,
-        cursor_y_percent: pendingCursorRef.current?.yPercent ?? null,
-        last_heartbeat_at: new Date().toISOString(),
-      },
-      { onConflict: "instance_id" },
-    ).then(({ error }) => {
-      if (error) {
-        setCollaborationStatus("retrying");
-        setCollaborationError(error.message);
-        return;
-      }
-
-      setCollaborationStatus("connected");
-      setCollaborationError("");
-    });
-  }, [interactionMode, isJoined, participantName, resolvedSession.sessionId]);
 
   const persistSession = async (
     nextSessionId: string,
@@ -1002,7 +645,7 @@ export default function PdfWorkspacePage() {
     if (announce) {
       toast({
         title: "Session saved",
-        description: `Review room ${nextSessionId} is ready to share.`,
+        description: `Signature room ${nextSessionId} is ready to share.`,
       });
     }
 
@@ -1053,11 +696,7 @@ export default function PdfWorkspacePage() {
     if (uploadError) {
       setIsUploading(false);
       setSessionError(uploadError.message);
-      toast({
-        title: "Upload failed",
-        description: uploadError.message,
-        variant: "destructive",
-      });
+      toast({ title: "Upload failed", description: uploadError.message, variant: "destructive" });
       return;
     }
 
@@ -1081,20 +720,15 @@ export default function PdfWorkspacePage() {
     setIsUploading(false);
     toast({
       title: "PDF uploaded",
-      description: `Everyone on session ${nextSessionId} can now open the same document.`,
+      description: `Everyone on session ${nextSessionId} can now open the same document and see the same signature flags.`,
     });
   };
 
   const loadFile = async (file: File | null) => {
-    if (!file) {
-      return;
-    }
+    if (!file) return;
 
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      toast({
-        title: "PDF required",
-        description: "Upload a PDF file to preview and share it with collaborators.",
-      });
+      toast({ title: "PDF required", description: "Upload a PDF file to launch the signing room." });
       return;
     }
 
@@ -1113,9 +747,7 @@ export default function PdfWorkspacePage() {
   };
 
   const handleDownload = () => {
-    if (!viewerUrl || !documentRecord?.originalFilename) {
-      return;
-    }
+    if (!viewerUrl || !documentRecord?.originalFilename) return;
 
     const link = document.createElement("a");
     link.href = viewerUrl;
@@ -1123,109 +755,34 @@ export default function PdfWorkspacePage() {
     link.click();
   };
 
-  const trackCursor = async (cursor: { xPercent: number; yPercent: number } | null) => {
-    const { error } = await supabase.from("pdf_collab_participants").upsert(
-      {
-        instance_id: localParticipantInstanceId.current,
-        session_id: resolvedSession.sessionId,
-        profile_id: localParticipantProfileId.current,
-        name: participantNameRef.current,
-        active_tool: interactionModeRef.current,
-        is_in_call: isJoinedRef.current,
-        cursor_x_percent: cursor?.xPercent ?? null,
-        cursor_y_percent: cursor?.yPercent ?? null,
-        last_heartbeat_at: new Date().toISOString(),
-      },
-      { onConflict: "instance_id" },
-    );
+  const upsertFlagState = (record: SignatureFlagRecord) => {
+    setSignatureFlags((current) => {
+      const existingIndex = current.findIndex((flag) => flag.id === record.id);
+      if (existingIndex === -1) {
+        return [...current, record].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+      }
 
-    if (error) {
-      setCollaborationStatus("retrying");
-      setCollaborationError(error.message);
-      return;
-    }
-
-    const nextParticipants = [
-      {
-        id: localParticipantInstanceId.current,
-        name: participantNameRef.current,
-        color: localParticipantColor,
-        cursor,
-        activeTool: interactionModeRef.current,
-        isInCall: isJoinedRef.current,
-        lastActiveAt: new Date().toISOString(),
-        isSelf: true,
-      },
-      ...latestPresenceRef.current.filter((participant) => participant.id !== localParticipantInstanceId.current),
-    ].sort((left, right) => Number(right.isSelf) - Number(left.isSelf) || left.name.localeCompare(right.name));
-
-    latestPresenceRef.current = nextParticipants;
-    setPresenceParticipants(nextParticipants);
-    setCollaborationStatus("connected");
-    setCollaborationError("");
+      const next = [...current];
+      next[existingIndex] = record;
+      return next;
+    });
   };
 
-  const flushPendingCursor = () => {
-    if (!pendingCursorRef.current) {
-      return;
-    }
+  const upsertCommentState = (record: CommentRecord) => {
+    setComments((current) => {
+      const existingIndex = current.findIndex((comment) => comment.id === record.id);
+      if (existingIndex === -1) {
+        return [...current, record].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+      }
 
-    const nextCursor = pendingCursorRef.current;
-    pendingCursorRef.current = null;
-    cursorSentAtRef.current = Date.now();
-    void trackCursor(nextCursor);
+      const next = [...current];
+      next[existingIndex] = record;
+      return next;
+    });
   };
 
-  const scheduleCursorBroadcast = (cursor: { xPercent: number; yPercent: number } | null) => {
-    if (cursor === null) {
-      pendingCursorRef.current = null;
-      cursorSentAtRef.current = Date.now();
-      void trackCursor(null);
-      return;
-    }
-
-    const elapsed = Date.now() - cursorSentAtRef.current;
-    if (elapsed >= CURSOR_BROADCAST_INTERVAL_MS) {
-      cursorSentAtRef.current = Date.now();
-      pendingCursorRef.current = null;
-      void trackCursor(cursor);
-      return;
-    }
-
-    pendingCursorRef.current = cursor;
-    if (cursorTimeoutRef.current) {
-      return;
-    }
-
-    cursorTimeoutRef.current = window.setTimeout(() => {
-      cursorTimeoutRef.current = null;
-      flushPendingCursor();
-    }, CURSOR_BROADCAST_INTERVAL_MS - elapsed);
-  };
-
-  const handleWorkspacePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!documentRecord?.publicUrl || interactionMode === "pin") {
-      return;
-    }
-
-    const bounds = event.currentTarget.getBoundingClientRect();
-    if (!bounds.width || !bounds.height) {
-      return;
-    }
-
-    const xPercent = Number((((event.clientX - bounds.left) / bounds.width) * 100).toFixed(2));
-    const yPercent = Number((((event.clientY - bounds.top) / bounds.height) * 100).toFixed(2));
-    scheduleCursorBroadcast({ xPercent, yPercent });
-  };
-
-  const handleWorkspacePointerLeave = () => {
-    scheduleCursorBroadcast(null);
-  };
-
-  const handleAnnotationPlacement = async (event: ReactMouseEvent<HTMLElement>) => {
-    if (interactionMode !== "pin" || !documentRecord?.publicUrl) {
-      return;
-    }
+  const handleFlagPlacement = async (event: ReactMouseEvent<HTMLElement>) => {
+    if (!placementMode || !documentRecord?.publicUrl) return;
 
     const bounds = event.currentTarget.getBoundingClientRect();
     const xPercent = Number((((event.clientX - bounds.left) / bounds.width) * 100).toFixed(2));
@@ -1234,98 +791,110 @@ export default function PdfWorkspacePage() {
     await ensureCurrentSessionRecord();
 
     const { data, error } = await supabase
-      .from("pdf_collab_annotations")
+      .from("pdf_signature_flags")
       .insert({
         session_id: resolvedSession.sessionId,
-        author_id: localParticipantProfileId.current,
-        author_name: participantName.trim() || "Reviewer",
-        color: localParticipantColor,
-        title: annotationComposer.title.trim() || null,
-        body: annotationComposer.body.trim() || null,
-        annotation_type: annotationComposer.annotationType,
-        status: annotationComposer.status,
-        priority: annotationComposer.priority,
+        document_storage_path: documentRecord?.storagePath ?? null,
+        created_by_id: participantProfileId.current,
+        created_by_name: participantName.trim() || "Signer",
+        flag_type: placementDraft.flagType,
+        label: placementDraft.label.trim() || null,
         x_percent: xPercent,
         y_percent: yPercent,
       })
-      .select("id, session_id, author_id, author_name, color, title, body, annotation_type, status, priority, x_percent, y_percent, created_at, updated_at, resolved_at")
+      .select("id, session_id, document_storage_path, created_by_name, created_by_id, flag_type, label, x_percent, y_percent, signed_by_name, signed_by_text, signed_at, signer_profile_id, signer_note, created_at, updated_at")
       .single();
 
     if (error) {
-      toast({
-        title: "Markup not added",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Flag not placed", description: error.message, variant: "destructive" });
       return;
     }
 
-    const nextAnnotation = normalizeAnnotationRecord(data as unknown as Record<string, string | number | null>);
-    upsertAnnotationState(nextAnnotation);
-    setSelectedAnnotationId(nextAnnotation.id);
-    setInteractionMode("pointer");
-    setAnnotationComposer(defaultAnnotationComposer());
+    const nextFlag = normalizeSignatureFlagRecord(data as unknown as Record<string, string | number | null>);
+    upsertFlagState(nextFlag);
+    setSelectedFlagId(nextFlag.id);
+    toast({ title: "Signature flag placed", description: `${flagTypeConfig[nextFlag.flagType].label} is now visible to everyone in the session.` });
   };
 
-  const handleSaveSelectedAnnotation = async () => {
-    if (!selectedAnnotation) {
+  const handleDeleteFlag = async (flagId: string) => {
+    const { error } = await supabase.from("pdf_signature_flags").delete().eq("id", flagId);
+
+    if (error) {
+      toast({ title: "Flag not removed", description: error.message, variant: "destructive" });
       return;
     }
 
-    setIsSavingAnnotation(true);
+    setSignatureFlags((current) => current.filter((flag) => flag.id !== flagId));
+    setSelectedFlagId((current) => (current === flagId ? null : current));
+  };
+
+  const handleSaveSignature = async () => {
+    if (!selectedFlag) return;
+
+    const signerName = signDraft.signerName.trim();
+    const signatureText = signDraft.signatureText.trim();
+
+    if (!signerName || !signatureText) {
+      toast({ title: "Missing signature info", description: "Enter a signer name and signature text first.", variant: "destructive" });
+      return;
+    }
+
+    setIsSavingFlag(true);
     const { data, error } = await supabase
-      .from("pdf_collab_annotations")
+      .from("pdf_signature_flags")
       .update({
-        title: selectedAnnotationDraft.title.trim() || null,
-        body: selectedAnnotationDraft.body.trim() || null,
-        annotation_type: selectedAnnotationDraft.annotationType,
-        status: selectedAnnotationDraft.status,
-        priority: selectedAnnotationDraft.priority,
+        signed_by_name: signerName,
+        signed_by_text: signatureText,
+        signer_note: signDraft.note.trim() || null,
+        signer_profile_id: participantProfileId.current,
+        signed_at: new Date().toISOString(),
       })
-      .eq("id", selectedAnnotation.id)
-      .select("id, session_id, author_id, author_name, color, title, body, annotation_type, status, priority, x_percent, y_percent, created_at, updated_at, resolved_at")
+      .eq("id", selectedFlag.id)
+      .select("id, session_id, document_storage_path, created_by_name, created_by_id, flag_type, label, x_percent, y_percent, signed_by_name, signed_by_text, signed_at, signer_profile_id, signer_note, created_at, updated_at")
       .single();
 
-    setIsSavingAnnotation(false);
+    setIsSavingFlag(false);
 
     if (error) {
-      toast({
-        title: "Pin not saved",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Signature not saved", description: error.message, variant: "destructive" });
       return;
     }
 
-    const nextAnnotation = normalizeAnnotationRecord(data as unknown as Record<string, string | number | null>);
-    upsertAnnotationState(nextAnnotation);
-    toast({
-      title: "Pin updated",
-      description: "Status, priority, and notes now sync for the session.",
-    });
+    const nextFlag = normalizeSignatureFlagRecord(data as unknown as Record<string, string | number | null>);
+    upsertFlagState(nextFlag);
+    toast({ title: "Signature captured", description: `${signerName} signed this flag.` });
   };
 
-  const handleDeleteAnnotation = async (annotationId: string) => {
-    const { error } = await supabase.from("pdf_collab_annotations").delete().eq("id", annotationId);
+  const handleClearSignature = async () => {
+    if (!selectedFlag) return;
+
+    const { data, error } = await supabase
+      .from("pdf_signature_flags")
+      .update({
+        signed_by_name: null,
+        signed_by_text: null,
+        signer_note: null,
+        signer_profile_id: null,
+        signed_at: null,
+      })
+      .eq("id", selectedFlag.id)
+      .select("id, session_id, document_storage_path, created_by_name, created_by_id, flag_type, label, x_percent, y_percent, signed_by_name, signed_by_text, signed_at, signer_profile_id, signer_note, created_at, updated_at")
+      .single();
 
     if (error) {
-      toast({
-        title: "Could not delete markup",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Signature not cleared", description: error.message, variant: "destructive" });
       return;
     }
 
-    setAnnotations((current) => current.filter((annotation) => annotation.id !== annotationId));
-    setSelectedAnnotationId((current) => (current === annotationId ? null : current));
+    const nextFlag = normalizeSignatureFlagRecord(data as unknown as Record<string, string | number | null>);
+    upsertFlagState(nextFlag);
+    setSignDraft(defaultSignDraft(participantName.trim() || "Signer"));
+    toast({ title: "Flag reset", description: "This flag is back to unsigned." });
   };
 
-  const handleCreateComment = async (options: { body: string; annotationId?: string | null; parentId?: string | null; onSuccess?: () => void }) => {
+  const handleCreateComment = async (options: { body: string; parentId?: string | null; onSuccess?: () => void }) => {
     const body = options.body.trim();
-    if (!body) {
-      return;
-    }
+    if (!body) return;
 
     await ensureCurrentSessionRecord();
 
@@ -1333,22 +902,18 @@ export default function PdfWorkspacePage() {
       .from("pdf_collab_comments")
       .insert({
         session_id: resolvedSession.sessionId,
-        annotation_id: options.annotationId ?? null,
+        annotation_id: null,
         parent_id: options.parentId ?? null,
-        author_id: localParticipantProfileId.current,
-        author_name: participantName.trim() || "Reviewer",
-        color: localParticipantColor,
+        author_id: participantProfileId.current,
+        author_name: participantName.trim() || "Signer",
+        color: "#0f172a",
         body,
       })
       .select("id, session_id, annotation_id, parent_id, author_id, author_name, color, body, created_at, updated_at")
       .single();
 
     if (error) {
-      toast({
-        title: "Comment not sent",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Message not sent", description: error.message, variant: "destructive" });
       return;
     }
 
@@ -1360,11 +925,7 @@ export default function PdfWorkspacePage() {
     const { error } = await supabase.from("pdf_collab_comments").delete().eq("id", commentId);
 
     if (error) {
-      toast({
-        title: "Comment not removed",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Comment not removed", description: error.message, variant: "destructive" });
       return;
     }
 
@@ -1378,40 +939,15 @@ export default function PdfWorkspacePage() {
 
     try {
       await navigator.clipboard.writeText(inviteUrl);
-      toast({
-        title: "Invite link copied",
-        description: "Share it with another reviewer to join the same document room.",
-      });
+      toast({ title: "Invite link copied", description: "Share it so others can view the same PDF and sign the same flags." });
     } catch {
       toast({ title: "Copy failed", description: inviteUrl });
     }
   };
 
-  const handleReconnectRealtime = () => {
-    setCollaborationStatus("connecting");
-    void supabase.from("pdf_collab_participants").upsert(
-      {
-        instance_id: localParticipantInstanceId.current,
-        session_id: resolvedSession.sessionId,
-        profile_id: localParticipantProfileId.current,
-        name: participantNameRef.current,
-        active_tool: interactionModeRef.current,
-        is_in_call: isJoinedRef.current,
-        cursor_x_percent: pendingCursorRef.current?.xPercent ?? null,
-        cursor_y_percent: pendingCursorRef.current?.yPercent ?? null,
-        last_heartbeat_at: new Date().toISOString(),
-      },
-      { onConflict: "instance_id" },
-    ).then(({ error }) => {
-      if (error) {
-        setCollaborationStatus("failed");
-        setCollaborationError(error.message);
-        return;
-      }
-
-      setCollaborationStatus("connected");
-      setCollaborationError("");
-    });
+  const handleRefreshSharedState = () => {
+    setCollaborationError("");
+    toast({ title: "Refreshing", description: "Polling for the latest flags and chat messages." });
   };
 
   const handleNewSession = () => {
@@ -1429,11 +965,12 @@ export default function PdfWorkspacePage() {
       uploadedAt: null,
     });
     setViewerUrl(null);
-    setAnnotations([]);
+    setSignatureFlags([]);
     setComments([]);
-    setSelectedAnnotationId(null);
+    setSelectedFlagId(null);
+    setPlacementMode(false);
     setSearchParams(buildSessionSearchParams(nextSessionId, nextSessionName, token.trim()));
-    toast({ title: "New session created", description: `Room ${nextSessionId} is ready for a new document.` });
+    toast({ title: "New session created", description: `Room ${nextSessionId} is ready for a fresh PDF.` });
   };
 
   const callPath = buildCallSessionPath(resolvedSession.sessionId, resolvedSession.sessionName, token.trim());
@@ -1445,10 +982,10 @@ export default function PdfWorkspacePage() {
         <div className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.10)]">
           <div className="flex flex-col gap-5 border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,#1e3a8a_0%,#0f172a_58%,#020617_100%)] px-6 py-5 text-white xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sky-300">Collaborative PDF review</p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Review the document together with visible cursors, live pins, and a working chat</h1>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sky-300">Signature PDF workspace</p>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Place signature flags, share one session link, and collect lightweight signatures</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
-                Shared PDF, cursors, pins, call status, and chat all stay synced in the same room.
+                The flaky cursor circus is gone. Upload the PDF, drop shared signature flags, and let participants sign directly on the document.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -1456,10 +993,6 @@ export default function PdfWorkspacePage() {
                 <Link2 className="mr-2 h-4 w-4" />
                 Invite
               </Button>
-              <Badge variant="outline" className={cn("rounded-full border px-3 py-1 text-xs font-medium", statusStyles[status])}>
-                <Radio className="mr-1.5 h-3.5 w-3.5" />
-                {status === "idle" ? "Call ready" : status === "joining" ? "Joining" : status === "joined" ? "Live" : "Leaving"}
-              </Badge>
               <Button variant="secondary" className="bg-white text-slate-950 hover:bg-slate-100" onClick={() => fileInputRef.current?.click()} disabled={isUploading || isLoadingSession}>
                 {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                 Upload PDF
@@ -1477,23 +1010,20 @@ export default function PdfWorkspacePage() {
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <CardTitle className="text-slate-950">Document viewer</CardTitle>
-                    <CardDescription>Pins, comments, and collaborator cursors stay on the same PDF so everyone sees the same thing.</CardDescription>
+                    <CardDescription>Hosts place signature flags. Participants click one and complete a typed-signature MVP.</CardDescription>
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <div className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
-                      <Sparkles className="mr-1.5 h-3.5 w-3.5 text-amber-500" />
-                      {annotations.length} pin{annotations.length === 1 ? "" : "s"}
+                      <FileSignature className="mr-1.5 h-3.5 w-3.5 text-slate-700" />
+                      {signatureFlags.length} flag{signatureFlags.length === 1 ? "" : "s"}
                     </div>
-                    {presenceParticipants.slice(0, 4).map((participant) => (
-                      <div key={participant.id} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: participant.color }} />
-                        <span className="max-w-24 truncate">{participant.isSelf ? `${participant.name} (You)` : participant.name}</span>
-                      </div>
-                    ))}
+                    <div className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                      <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+                      {signedCount} signed
+                    </div>
                     {documentRecord?.publicUrl ? (
-                      <div className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                        <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
-                        Shared
+                      <div className="inline-flex items-center rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                        Shared PDF
                       </div>
                     ) : null}
                   </div>
@@ -1524,15 +1054,14 @@ export default function PdfWorkspacePage() {
                     <div className="mb-5 rounded-full bg-sky-100 p-4 text-sky-700">
                       <FileText className="h-8 w-8" />
                     </div>
-                    <h2 className="text-2xl font-semibold text-slate-950">Drop a PDF to launch the shared review workspace</h2>
+                    <h2 className="text-2xl font-semibold text-slate-950">Drop a PDF to launch the shared signature room</h2>
                     <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
-                      The uploaded file is stored on the server and attached to this session so everyone with the invite link can view the same document while on video.
+                      Upload once, share the session link, place signature markers, and let people sign without the cursor goblins causing chaos.
                     </p>
                     <Button className="mt-6">
                       <Upload className="mr-2 h-4 w-4" />
                       Choose PDF
                     </Button>
-                    <p className="mt-4 text-xs uppercase tracking-[0.2em] text-slate-400">Drag and drop or click to browse</p>
                   </div>
                 ) : (
                   <div className="flex min-h-[820px] flex-col bg-slate-100">
@@ -1543,89 +1072,52 @@ export default function PdfWorkspacePage() {
                           <p className="text-xs text-slate-500">{metadata?.size} · Shared in session {resolvedSession.sessionId}</p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="outline" className="border-slate-300 text-slate-600">
-                            {otherParticipants.length} collaborator{otherParticipants.length === 1 ? "" : "s"} live
-                          </Badge>
-                          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">Shared PDF</div>
+                          <Badge variant="outline" className="border-slate-300 text-slate-600">{pendingCount} pending</Badge>
+                          <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">{signedCount} completed</Badge>
                         </div>
                       </div>
-                    <div className="grid gap-3 xl:grid-cols-[auto,1fr]">
-                      <div className="flex flex-wrap items-center gap-2">
+
+                      <div className="grid gap-3 xl:grid-cols-[auto,1fr]">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Button
                             type="button"
-                            variant={interactionMode === "pointer" ? "default" : "outline"}
-                            className={cn(interactionMode === "pointer" ? "" : "border-slate-300")}
-                            onClick={() => setInteractionMode("pointer")}
-                          >
-                            <MousePointer2 className="mr-2 h-4 w-4" />
-                            Pointer
-                          </Button>
-                          <Button
-                            type="button"
-                            variant={interactionMode === "pin" ? "default" : "outline"}
-                            className={cn(interactionMode === "pin" ? "" : "border-slate-300")}
-                            onClick={() => setInteractionMode("pin")}
+                            variant={placementMode ? "default" : "outline"}
+                            className={cn(placementMode ? "" : "border-slate-300")}
+                            onClick={() => setPlacementMode((current) => !current)}
                           >
                             <PenLine className="mr-2 h-4 w-4" />
-                            Pin
+                            {placementMode ? "Placement mode on" : "Enter placement mode"}
                           </Button>
-                          <Badge variant="outline" className={cn("border px-3 py-1 text-xs font-medium", collaborationStatus === "connected" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700")}>
-                            {collaborationStatus === "connected" ? `${presenceParticipants.length} collaborator${presenceParticipants.length === 1 ? "" : "s"} connected` : "Syncing collaborators..."}
+                          <Badge variant="outline" className={placementMode ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-600"}>
+                            {placementMode ? "Click PDF to place a flag" : "Viewing and signing mode"}
                           </Badge>
                         </div>
-                        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr),150px,150px,150px]">
+                        <div className="grid gap-3 lg:grid-cols-[160px,minmax(0,1fr)]">
+                          <Select value={placementDraft.flagType} onValueChange={(value: SignatureFlagType) => setPlacementDraft((current) => ({ ...current, flagType: value }))}>
+                            <SelectTrigger className="border-slate-300 bg-white">
+                              <SelectValue placeholder="Flag type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(flagTypeConfig).map(([value, config]) => (
+                                <SelectItem key={value} value={value}>{config.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           <Input
-                            value={annotationComposer.title}
-                            onChange={(event) => setAnnotationComposer((current) => ({ ...current, title: event.target.value }))}
-                            placeholder="Pin title"
+                            value={placementDraft.label}
+                            onChange={(event) => setPlacementDraft((current) => ({ ...current, label: event.target.value }))}
+                            placeholder="Optional label like CFO signature or Date signed"
                           />
-                          <Select value={annotationComposer.annotationType} onValueChange={(value: AnnotationType) => setAnnotationComposer((current) => ({ ...current, annotationType: value }))}>
-                            <SelectTrigger className="border-slate-300 bg-white">
-                              <SelectValue placeholder="Type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Object.entries(annotationTypeConfig).map(([value, config]) => (
-                                <SelectItem key={value} value={value}>{config.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Select value={annotationComposer.status} onValueChange={(value: AnnotationStatus) => setAnnotationComposer((current) => ({ ...current, status: value }))}>
-                            <SelectTrigger className="border-slate-300 bg-white">
-                              <SelectValue placeholder="Status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Object.entries(annotationStatusConfig).map(([value, config]) => (
-                                <SelectItem key={value} value={value}>{config.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Select value={annotationComposer.priority} onValueChange={(value: AnnotationPriority) => setAnnotationComposer((current) => ({ ...current, priority: value }))}>
-                            <SelectTrigger className="border-slate-300 bg-white">
-                              <SelectValue placeholder="Priority" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Object.entries(annotationPriorityConfig).map(([value, config]) => (
-                                <SelectItem key={value} value={value}>{config.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
                         </div>
                       </div>
-                      <Textarea
-                        value={annotationComposer.body}
-                        onChange={(event) => setAnnotationComposer((current) => ({ ...current, body: event.target.value }))}
-                        placeholder="Optional detail for the next pin"
-                        className="min-h-[84px] border-slate-200 bg-slate-50"
-                      />
+
                       {collaborationError ? (
                         <Alert variant="destructive">
                           <AlertCircle className="h-4 w-4" />
-                          <AlertTitle>Collaboration sync issue</AlertTitle>
+                          <AlertTitle>Sync issue</AlertTitle>
                           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <span>
-                              {collaborationError} {collaborationStatus === "retrying" ? "Retrying automatically." : "Retry sync to restore live cursors, chat, and pins."}
-                            </span>
-                            <Button type="button" variant="outline" className="border-red-300 bg-white text-red-700 hover:bg-red-50" onClick={handleReconnectRealtime}>
+                            <span>{collaborationError}</span>
+                            <Button type="button" variant="outline" className="border-red-300 bg-white text-red-700 hover:bg-red-50" onClick={handleRefreshSharedState}>
                               <RefreshCw className="mr-2 h-4 w-4" />
                               Retry sync
                             </Button>
@@ -1633,80 +1125,61 @@ export default function PdfWorkspacePage() {
                         </Alert>
                       ) : null}
                     </div>
-                    <div className="relative h-[980px] w-full overflow-hidden bg-white" onPointerMove={handleWorkspacePointerMove} onPointerLeave={handleWorkspacePointerLeave}>
+
+                    <div className="relative h-[980px] w-full overflow-hidden bg-white">
                       <div ref={viewerHostRef} className="h-full w-full bg-white" />
                       <div className="absolute left-4 top-4 z-30 max-w-md rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
                         <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
-                          {interactionMode === "pointer" ? <MousePointer2 className="h-4 w-4 text-sky-600" /> : <PenLine className="h-4 w-4 text-amber-600" />}
-                          {interactionMode === "pointer" ? "Pointer mode" : "Pin mode"}
+                          {placementMode ? <PenLine className="h-4 w-4 text-amber-600" /> : <FileSignature className="h-4 w-4 text-sky-600" />}
+                          {placementMode ? "Placement mode" : "Signing mode"}
                         </div>
                         <p className="mt-1 text-xs leading-5 text-slate-600">
-                          {interactionMode === "pointer"
-                            ? "Move over the PDF to show your cursor to collaborators in real time."
-                            : "Click anywhere on the PDF to drop a shared pin with a comment thread."}
+                          {placementMode
+                            ? `Click anywhere on the PDF to place a ${flagTypeConfig[placementDraft.flagType].label.toLowerCase()} marker.`
+                            : "Click any flag to review it and apply a lightweight typed signature."}
                         </p>
                       </div>
+
                       <div className="pointer-events-none absolute inset-0 z-10">
-                        {annotations.map((annotation, index) => {
-                          const typeConfig = annotationTypeConfig[annotation.annotationType];
-                          const statusConfig = annotationStatusConfig[annotation.status];
+                        {signatureFlags.map((flag, index) => {
+                          const config = flagTypeConfig[flag.flagType];
+                          const isSigned = Boolean(flag.signedAt);
 
                           return (
                             <button
-                              key={annotation.id}
+                              key={flag.id}
                               type="button"
                               className={cn(
-                                "pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-[20px] border-2 border-white px-2 py-1 text-left text-white shadow-[0_10px_30px_rgba(15,23,42,0.24)] transition hover:scale-[1.02]",
-                                annotation.status === "resolved" ? "opacity-80" : "",
-                                selectedAnnotationId === annotation.id ? "ring-4 ring-sky-100" : "",
+                                "pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-2xl border-2 border-white px-3 py-2 text-left text-white shadow-[0_10px_30px_rgba(15,23,42,0.24)] transition hover:scale-[1.02]",
+                                selectedFlagId === flag.id ? "ring-4 ring-sky-100" : "",
+                                isSigned ? "opacity-95" : "",
                               )}
                               style={{
-                                left: `${annotation.xPercent}%`,
-                                top: `${annotation.yPercent}%`,
-                                backgroundColor: annotation.color,
+                                left: `${flag.xPercent}%`,
+                                top: `${flag.yPercent}%`,
+                                backgroundColor: isSigned ? "#15803d" : config.accent,
                               }}
-                              onClick={() => setSelectedAnnotationId(annotation.id)}
-                              title={annotation.title || annotation.body || `Markup ${index + 1}`}
+                              onClick={() => setSelectedFlagId(flag.id)}
+                              title={flag.label || config.label}
                             >
                               <div className="flex items-center gap-2">
-                                <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-white/20 px-2 text-[11px] font-bold">{typeConfig.marker}</span>
+                                <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-white/20 px-2 text-[11px] font-bold">{config.marker}</span>
                                 <div className="min-w-0">
-                                  <p className="max-w-[170px] truncate text-xs font-semibold">{annotation.title || `${typeConfig.label} ${index + 1}`}</p>
-                                  <p className="text-[10px] uppercase tracking-[0.18em] text-white/75">{statusConfig.label}</p>
+                                  <p className="max-w-[180px] truncate text-xs font-semibold">{flag.label || config.label}</p>
+                                  <p className="text-[10px] uppercase tracking-[0.18em] text-white/80">{isSigned ? "Signed" : `Flag ${index + 1}`}</p>
                                 </div>
                               </div>
                             </button>
                           );
                         })}
-                        {otherParticipants.map((participant) =>
-                          participant.cursor ? (
-                            <div
-                              key={participant.id}
-                              className="absolute -translate-x-1/2 -translate-y-1/2"
-                              style={{ left: `${participant.cursor.xPercent}%`, top: `${participant.cursor.yPercent}%` }}
-                            >
-                              <div className="relative">
-                                <div
-                                  className="h-4 w-4 rotate-[-18deg] rounded-br-full rounded-tl-sm border border-white shadow-sm"
-                                  style={{ backgroundColor: participant.color }}
-                                />
-                                <div
-                                  className="absolute left-3 top-3 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold text-white shadow-[0_8px_24px_rgba(15,23,42,0.2)]"
-                                  style={{ backgroundColor: participant.color }}
-                                >
-                                  {participant.name}
-                                </div>
-                              </div>
-                            </div>
-                          ) : null,
-                        )}
                       </div>
-                      {interactionMode === "pin" ? (
+
+                      {placementMode ? (
                         <button
                           type="button"
                           className="absolute inset-0 z-20 cursor-crosshair bg-transparent"
-                          onClick={handleAnnotationPlacement}
-                          aria-label="Place shared pin"
+                          onClick={handleFlagPlacement}
+                          aria-label="Place signature flag"
                         />
                       ) : null}
                     </div>
@@ -1724,10 +1197,9 @@ export default function PdfWorkspacePage() {
                         <Video className="mr-2 h-5 w-5 text-sky-300" />
                         Live room
                       </CardTitle>
-                      <CardDescription className="text-slate-300">Video and audio stay pinned beside the review rail while the document remains the main workspace.</CardDescription>
+                      <CardDescription className="text-slate-300">Call stays beside the signing rail. Useful, optional, and notably less annoying than shared cursors.</CardDescription>
                     </div>
-                    <Badge variant="outline" className={cn("rounded-full border px-3 py-1 text-xs font-medium", statusStyles[status])}>
-                      <Radio className="mr-1.5 h-3.5 w-3.5" />
+                    <Badge variant="outline" className="rounded-full border px-3 py-1 text-xs font-medium border-slate-700 bg-slate-900 text-slate-100">
                       {status === "idle" ? "Call ready" : status === "joining" ? "Joining" : status === "joined" ? "Live" : "Leaving"}
                     </Badge>
                   </div>
@@ -1793,85 +1265,236 @@ export default function PdfWorkspacePage() {
                 <CardHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_100%)] pb-4">
                   <CardTitle className="flex items-center text-slate-950">
                     <ShieldCheck className="mr-2 h-5 w-5 text-sky-600" />
-                    Collaborators
+                    Signature status
                   </CardTitle>
-                  <CardDescription>Who is in the session, who is moving on the document, and where review attention is concentrated.</CardDescription>
+                  <CardDescription>Simple session-level overview of what still needs a signature and what has already been completed.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 p-5">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Collaborators</p>
-                      <p className="mt-2 text-3xl font-semibold text-slate-950">{presenceParticipants.length}</p>
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Active cursors</p>
-                      <p className="mt-2 text-3xl font-semibold text-slate-950">{presenceParticipants.filter((participant) => participant.cursor).length}</p>
-                    </div>
-                  </div>
                   <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Pointers visible</p>
-                      <p className="mt-2 text-2xl font-semibold text-slate-950">{sessionActivitySummary.activeOnDocument}</p>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Flags</p>
+                      <p className="mt-2 text-3xl font-semibold text-slate-950">{signatureFlags.length}</p>
                     </div>
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">In live call</p>
-                      <p className="mt-2 text-2xl font-semibold text-slate-950">{sessionActivitySummary.liveInCall}</p>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Signed</p>
+                      <p className="mt-2 text-3xl font-semibold text-emerald-700">{signedCount}</p>
                     </div>
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Ready to pin</p>
-                      <p className="mt-2 text-2xl font-semibold text-slate-950">{sessionActivitySummary.drafting}</p>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Pending</p>
+                      <p className="mt-2 text-3xl font-semibold text-amber-700">{pendingCount}</p>
                     </div>
                   </div>
-                  <div className="space-y-3">
-                    {presenceParticipants.length ? presenceParticipants.map((participant) => (
-                      <div key={participant.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="flex min-w-0 items-center gap-3">
-                            <Avatar className="h-10 w-10 border border-slate-200">
-                              <AvatarFallback style={{ backgroundColor: `${participant.color}20`, color: participant.color }}>
-                                {getInitials(participant.name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="truncate text-sm font-semibold text-slate-950">{participant.name}</p>
-                                {participant.isSelf ? <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">You</Badge> : null}
-                                {participant.isInCall ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">In call</Badge> : null}
-                                <Badge variant="outline" className={participant.activeTool === "pin" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-700"}>
-                                  {participant.activeTool === "pin" ? "Pin" : "Pointer"}
-                                </Badge>
+
+                  <ScrollArea className="h-[280px] rounded-2xl border border-slate-200 bg-white">
+                    <div className="space-y-3 p-4">
+                      {signatureFlags.length ? signatureFlags.map((flag, index) => {
+                        const config = flagTypeConfig[flag.flagType];
+                        const isSigned = Boolean(flag.signedAt);
+
+                        return (
+                          <button
+                            key={flag.id}
+                            type="button"
+                            className={cn(
+                              "w-full rounded-2xl border px-4 py-4 text-left transition",
+                              selectedFlagId === flag.id ? "border-sky-300 bg-sky-50" : "border-slate-200 bg-white hover:border-slate-300",
+                            )}
+                            onClick={() => setSelectedFlagId(flag.id)}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold text-white" style={{ backgroundColor: isSigned ? "#15803d" : config.accent }}>
+                                    {index + 1}
+                                  </span>
+                                  <p className="text-sm font-semibold text-slate-950">{flag.label || config.label}</p>
+                                  <Badge variant="outline" className={config.badge}>{config.shortLabel}</Badge>
+                                  <Badge variant="outline" className={isSigned ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}>
+                                    {isSigned ? "Signed" : "Pending"}
+                                  </Badge>
+                                </div>
+                                <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                                  <span>Placed by {flag.createdByName}</span>
+                                  <span>{formatTimelineTimestamp(flag.createdAt)}</span>
+                                  <span>{flag.xPercent.toFixed(1)}%, {flag.yPercent.toFixed(1)}%</span>
+                                  {flag.signedAt ? <span>Signed by {flag.signedByName}</span> : null}
+                                </div>
                               </div>
-                              <p className="text-xs text-slate-500">{buildPresenceSummary(participant)}</p>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <p className="text-xs text-slate-400">Active {formatRelativeActivity(participant.lastActiveAt)}</p>
-                            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: participant.color }} />
-                          </div>
-                        </div>
-                      </div>
-                    )) : <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">Participants appear after the browser writes its first heartbeat for this session.</div>}
-                  </div>
+                          </button>
+                        );
+                      }) : <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">No signature flags yet. Turn on placement mode and click the PDF.</div>}
+                    </div>
+                  </ScrollArea>
                 </CardContent>
               </Card>
 
-              <Tabs defaultValue="chat" className="flex min-h-0 flex-1 flex-col">
+              <Tabs defaultValue="sign" className="flex min-h-0 flex-1 flex-col">
                 <TabsList className="grid w-full grid-cols-3 bg-slate-100">
+                  <TabsTrigger value="sign"><FileSignature className="mr-2 h-4 w-4" />Sign</TabsTrigger>
                   <TabsTrigger value="chat"><MessageSquare className="mr-2 h-4 w-4" />Chat</TabsTrigger>
-                  <TabsTrigger value="markup"><PenLine className="mr-2 h-4 w-4" />Pins</TabsTrigger>
-                  <TabsTrigger value="session"><FileBadge2 className="mr-2 h-4 w-4" />Session</TabsTrigger>
+                  <TabsTrigger value="session"><FileSignature className="mr-2 h-4 w-4" />Session</TabsTrigger>
                 </TabsList>
+
+                <TabsContent value="sign" className="mt-4 flex-1">
+                  <Card className="flex h-full flex-col border-slate-200 shadow-none">
+                    <CardHeader className="border-b border-slate-200 bg-slate-50 pb-4">
+                      <CardTitle className="text-slate-950">Flag details and signing</CardTitle>
+                      <CardDescription>Pick a flag, review what it is for, then capture a typed signature as the MVP.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-5">
+                      {selectedFlag ? (
+                        <>
+                          <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-5">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-lg font-semibold text-slate-950">{selectedFlag.label || flagTypeConfig[selectedFlag.flagType].label}</p>
+                                  <Badge variant="outline" className={flagTypeConfig[selectedFlag.flagType].badge}>{flagTypeConfig[selectedFlag.flagType].label}</Badge>
+                                  <Badge variant="outline" className={selectedFlag.signedAt ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}>
+                                    {selectedFlag.signedAt ? "Signed" : "Awaiting signature"}
+                                  </Badge>
+                                </div>
+                                <p className="mt-2 text-sm text-slate-500">Placed by {selectedFlag.createdByName} · {formatTimelineTimestamp(selectedFlag.createdAt)}</p>
+                              </div>
+                              <Button variant="outline" size="sm" className="border-slate-300" onClick={() => void handleDeleteFlag(selectedFlag.id)}>
+                                Delete flag
+                              </Button>
+                            </div>
+
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Position</p>
+                                <p className="mt-2 text-sm font-medium text-slate-950">{selectedFlag.xPercent.toFixed(1)}%, {selectedFlag.yPercent.toFixed(1)}%</p>
+                              </div>
+                              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Document match</p>
+                                <p className="mt-2 truncate text-sm font-medium text-slate-950">{documentRecord?.originalFilename || "Current session PDF"}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3 rounded-3xl border border-slate-200 bg-white p-5">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-950">Signature form</p>
+                              <p className="text-sm text-slate-500">This MVP stores signer name, typed signature text, timestamp, and an optional note on the flag itself.</p>
+                            </div>
+                            <Input
+                              value={signDraft.signerName}
+                              onChange={(event) => setSignDraft((current) => ({ ...current, signerName: event.target.value }))}
+                              placeholder="Signer name"
+                              className="border-slate-300"
+                            />
+                            <Input
+                              value={signDraft.signatureText}
+                              onChange={(event) => setSignDraft((current) => ({ ...current, signatureText: event.target.value }))}
+                              placeholder="Typed signature"
+                              className="border-slate-300"
+                            />
+                            <Textarea
+                              value={signDraft.note}
+                              onChange={(event) => setSignDraft((current) => ({ ...current, note: event.target.value }))}
+                              placeholder="Optional note, title, or clarification"
+                              className="min-h-[100px] border-slate-200"
+                            />
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="text-xs text-slate-500">
+                                {selectedFlag.signedAt ? `Currently signed by ${selectedFlag.signedByName} on ${formatTimelineTimestamp(selectedFlag.signedAt)}` : "Unsigned flag. Save to capture the signature."}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {selectedFlag.signedAt ? <Button type="button" variant="outline" className="border-slate-300" onClick={() => void handleClearSignature()}>Clear</Button> : null}
+                                <Button type="button" onClick={() => void handleSaveSignature()} disabled={isSavingFlag}>
+                                  {isSavingFlag ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                                  {selectedFlag.signedAt ? "Update signature" : "Save signature"}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                          Select a signature flag from the document or the status list.
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="chat" className="mt-4 flex-1">
+                  <Card className="flex h-full flex-col border-slate-200 shadow-none">
+                    <CardHeader className="border-b border-slate-200 bg-slate-50 pb-4">
+                      <CardTitle className="text-slate-950">Chat</CardTitle>
+                      <CardDescription>Room-level chat still works for coordinating the signing session.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-5">
+                      <form
+                        className="space-y-3"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void handleCreateComment({
+                            body: sessionReplyParentId ? sessionReplyDraft : sessionNoteDraft,
+                            parentId: sessionReplyParentId,
+                            onSuccess: () => {
+                              setSessionNoteDraft("");
+                              setSessionReplyDraft("");
+                              setSessionReplyParentId(null);
+                            },
+                          });
+                        }}
+                      >
+                        <Textarea
+                          value={sessionReplyParentId ? sessionReplyDraft : sessionNoteDraft}
+                          onChange={(event) => sessionReplyParentId ? setSessionReplyDraft(event.target.value) : setSessionNoteDraft(event.target.value)}
+                          placeholder={sessionReplyParentId ? "Reply in chat..." : "Send a message to everyone in this signing session..."}
+                          className="min-h-[100px] border-slate-200 bg-white"
+                        />
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs text-slate-500">Messages remain shared across everyone on the session link.</p>
+                          <div className="flex items-center gap-2">
+                            {sessionReplyParentId ? <Button type="button" variant="ghost" className="text-slate-500" onClick={() => { setSessionReplyParentId(null); setSessionReplyDraft(""); }}>Clear reply target</Button> : null}
+                            <Button type="submit" disabled={!(sessionReplyParentId ? sessionReplyDraft : sessionNoteDraft).trim()}>
+                              <Send className="mr-2 h-4 w-4" />
+                              Send message
+                            </Button>
+                          </div>
+                        </div>
+                      </form>
+                      <ScrollArea className="h-[420px] rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        {sessionChat.length ? (
+                          <ThreadList
+                            comments={sessionChat}
+                            replyDraft={sessionReplyDraft}
+                            replyParentId={sessionReplyParentId}
+                            setReplyDraft={setSessionReplyDraft}
+                            setReplyParentId={setSessionReplyParentId}
+                            onSubmitReply={(parentId) => handleCreateComment({
+                              body: sessionReplyDraft,
+                              parentId,
+                              onSuccess: () => {
+                                setSessionReplyDraft("");
+                                setSessionReplyParentId(null);
+                              },
+                            })}
+                            onDeleteComment={handleDeleteComment}
+                          />
+                        ) : (
+                          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">No chat messages yet.</div>
+                        )}
+                      </ScrollArea>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
 
                 <TabsContent value="session" className="mt-4 flex-1">
                   <Card className="h-full border-slate-200 shadow-none">
                     <CardHeader className="border-b border-slate-200 bg-slate-50 pb-4">
                       <CardTitle className="text-slate-950">Session controls</CardTitle>
-                      <CardDescription>Session, identity, file, and sharing controls for the current workspace.</CardDescription>
+                      <CardDescription>Session identity, sharing controls, and signer identity for the current workspace.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4 p-5">
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-slate-700" htmlFor="workspace-participant-name">Your display name</label>
-                        <Input id="workspace-participant-name" value={participantName} onChange={(event) => setParticipantName(event.target.value)} placeholder="Reviewer name used for cursors and review threads" />
+                        <Input id="workspace-participant-name" value={participantName} onChange={(event) => setParticipantName(event.target.value)} placeholder="Name shown in signatures and chat" />
                       </div>
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-slate-700" htmlFor="workspace-session-name">Session name</label>
@@ -1926,8 +1549,8 @@ export default function PdfWorkspacePage() {
                           <span className="text-right font-medium text-slate-950">{metadata?.uploadedAt ?? "Not uploaded yet"}</span>
                         </div>
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
-                          <p className="font-medium text-slate-950">Collaboration sync</p>
-                          <p className="mt-2">Each browser writes a server-backed participant heartbeat row for cursors, tool mode, and call status. The PDF session, pins, and chat are reloaded on a short polling interval so the room stays usable across browsers even if websocket presence is flaky.</p>
+                          <p className="font-medium text-slate-950">How this room works</p>
+                          <p className="mt-2">The PDF stays shared by session. Signature flags are persisted per session/document, and each flag stores its current signature state directly so the workflow stays simple and reliable.</p>
                         </div>
                       </div>
                       {sessionError ? (
@@ -1936,302 +1559,6 @@ export default function PdfWorkspacePage() {
                           <AlertDescription>{sessionError}</AlertDescription>
                         </Alert>
                       ) : null}
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-
-                <TabsContent value="markup" className="mt-4 flex-1">
-                  <Card className="flex h-full flex-col border-slate-200 shadow-none">
-                    <CardHeader className="border-b border-slate-200 bg-slate-50 pb-4">
-                      <CardTitle className="text-slate-950">Pins</CardTitle>
-                      <CardDescription>Typed annotation cards, status, priority, and threaded discussion all sync for the room.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-5">
-                      <div className="grid gap-3 sm:grid-cols-4">
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                          <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Open</p>
-                          <p className="mt-2 text-2xl font-semibold text-slate-950">{annotationSummary.open}</p>
-                        </div>
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                          <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">In review</p>
-                          <p className="mt-2 text-2xl font-semibold text-slate-950">{annotationSummary.inReview}</p>
-                        </div>
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                          <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Resolved</p>
-                          <p className="mt-2 text-2xl font-semibold text-slate-950">{annotationSummary.resolved}</p>
-                        </div>
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                          <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Urgent</p>
-                          <p className="mt-2 text-2xl font-semibold text-slate-950">{annotationSummary.urgent}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        {([
-                          ["all", "All items"],
-                          ["open", "Open"],
-                          ["in_review", "In review"],
-                          ["resolved", "Resolved"],
-                        ] as Array<[ReviewFilter, string]>).map(([value, label]) => (
-                          <Button
-                            key={value}
-                            type="button"
-                            variant={reviewFilter === value ? "default" : "outline"}
-                            className={cn(reviewFilter === value ? "" : "border-slate-300")}
-                            onClick={() => setReviewFilter(value)}
-                          >
-                            {label}
-                          </Button>
-                        ))}
-                      </div>
-
-                      <ScrollArea className="h-[280px] rounded-2xl border border-slate-200 bg-white">
-                        <div className="space-y-3 p-4">
-                          {filteredAnnotations.length ? filteredAnnotations.map((annotation, index) => (
-                            <button
-                              key={annotation.id}
-                              type="button"
-                              className={cn(
-                                "w-full rounded-2xl border px-4 py-4 text-left transition",
-                                selectedAnnotationId === annotation.id ? "border-sky-300 bg-sky-50" : "border-slate-200 bg-white hover:border-slate-300",
-                              )}
-                              onClick={() => setSelectedAnnotationId(annotation.id)}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold text-white" style={{ backgroundColor: annotation.color }}>
-                                      {annotations.findIndex((candidate) => candidate.id === annotation.id) + 1}
-                                    </span>
-                                    <p className="text-sm font-semibold text-slate-950">{annotation.title || `${annotationTypeConfig[annotation.annotationType].label} ${index + 1}`}</p>
-                                    <Badge variant="outline" className={annotationTypeConfig[annotation.annotationType].badge}>{annotationTypeConfig[annotation.annotationType].label}</Badge>
-                                    <Badge variant="outline" className={annotationStatusConfig[annotation.status].badge}>{annotationStatusConfig[annotation.status].label}</Badge>
-                                    <Badge variant="outline" className={annotationPriorityConfig[annotation.priority].badge}>{annotationPriorityConfig[annotation.priority].label}</Badge>
-                                  </div>
-                                  <p className="mt-2 text-sm leading-6 text-slate-700">{annotation.body || "No additional detail yet."}</p>
-                                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
-                                    <span>{annotation.authorName}</span>
-                                    <span>{formatTimelineTimestamp(annotation.createdAt)}</span>
-                                    <span>{annotation.xPercent.toFixed(1)}%, {annotation.yPercent.toFixed(1)}%</span>
-                                    <span>{annotationCommentCounts.get(annotation.id) ?? 0} comment{(annotationCommentCounts.get(annotation.id) ?? 0) === 1 ? "" : "s"}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </button>
-                          )) : <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">{annotations.length ? "No pins match the current filter." : "No shared pins yet. Drop one on the PDF to start the queue."}</div>}
-                        </div>
-                      </ScrollArea>
-
-                      {selectedAnnotation ? (
-                        <div className="flex min-h-0 flex-1 flex-col gap-4 rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-5">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-lg font-semibold text-slate-950">{selectedAnnotation.title || "Selected pin"}</p>
-                              <p className="mt-1 text-sm text-slate-500">Created by {selectedAnnotation.authorName} · {formatTimelineTimestamp(selectedAnnotation.createdAt)}</p>
-                            </div>
-                            <Button variant="outline" size="sm" className="border-slate-300" onClick={() => void handleDeleteAnnotation(selectedAnnotation.id)}>
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
-                            </Button>
-                          </div>
-
-                          <div className="grid gap-3 md:grid-cols-3">
-                            <Select value={selectedAnnotationDraft.annotationType} onValueChange={(value: AnnotationType) => setSelectedAnnotationDraft((current) => ({ ...current, annotationType: value }))}>
-                              <SelectTrigger className="border-slate-300 bg-white">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {Object.entries(annotationTypeConfig).map(([value, config]) => (
-                                  <SelectItem key={value} value={value}>{config.label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <Select value={selectedAnnotationDraft.status} onValueChange={(value: AnnotationStatus) => setSelectedAnnotationDraft((current) => ({ ...current, status: value }))}>
-                              <SelectTrigger className="border-slate-300 bg-white">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {Object.entries(annotationStatusConfig).map(([value, config]) => (
-                                  <SelectItem key={value} value={value}>{config.label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <Select value={selectedAnnotationDraft.priority} onValueChange={(value: AnnotationPriority) => setSelectedAnnotationDraft((current) => ({ ...current, priority: value }))}>
-                              <SelectTrigger className="border-slate-300 bg-white">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {Object.entries(annotationPriorityConfig).map(([value, config]) => (
-                                  <SelectItem key={value} value={value}>{config.label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <Input
-                            value={selectedAnnotationDraft.title}
-                            onChange={(event) => setSelectedAnnotationDraft((current) => ({ ...current, title: event.target.value }))}
-                            placeholder="Review title"
-                            className="border-slate-300 bg-white"
-                          />
-                          <Textarea
-                            value={selectedAnnotationDraft.body}
-                            onChange={(event) => setSelectedAnnotationDraft((current) => ({ ...current, body: event.target.value }))}
-                            placeholder="What should reviewers focus on here?"
-                            className="min-h-[110px] border-slate-200 bg-white"
-                          />
-                          <div className="flex items-center justify-end">
-                            <Button onClick={() => void handleSaveSelectedAnnotation()} disabled={isSavingAnnotation}>
-                              {isSavingAnnotation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                              Save pin
-                            </Button>
-                          </div>
-
-                          <Separator />
-
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="text-sm font-semibold text-slate-950">Threaded discussion</p>
-                                <p className="text-sm text-slate-500">Replies stay attached to this document point for everyone in the session.</p>
-                              </div>
-                              <Badge variant="outline" className="border-slate-300 text-slate-600">{annotationComments.length} entries</Badge>
-                            </div>
-                            <form
-                              className="space-y-3"
-                              onSubmit={(event) => {
-                                event.preventDefault();
-                                void handleCreateComment({
-                                  body: annotationReplyDraft,
-                                  annotationId: selectedAnnotation.id,
-                                  parentId: annotationReplyParentId,
-                                  onSuccess: () => {
-                                    setAnnotationReplyDraft("");
-                                    setAnnotationReplyParentId(null);
-                                  },
-                                });
-                              }}
-                            >
-                              <Textarea
-                                value={annotationReplyDraft}
-                                onChange={(event) => setAnnotationReplyDraft(event.target.value)}
-                                placeholder={annotationReplyParentId ? "Reply to the selected thread..." : "Add a threaded comment for this pin..."}
-                                className="min-h-[96px] border-slate-200 bg-white"
-                              />
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs text-slate-500">{annotationReplyParentId ? "New reply will attach inside the selected thread." : "Top-level comment in the selected review thread."}</p>
-                                <div className="flex items-center gap-2">
-                                  {annotationReplyParentId ? <Button type="button" variant="ghost" className="text-slate-500" onClick={() => { setAnnotationReplyDraft(""); setAnnotationReplyParentId(null); }}>Clear reply target</Button> : null}
-                                  <Button type="submit" disabled={!annotationReplyDraft.trim()}>
-                                    <Send className="mr-2 h-4 w-4" />
-                                    Send
-                                  </Button>
-                                </div>
-                              </div>
-                            </form>
-                            <ScrollArea className="h-[320px] rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                              {annotationComments.length ? (
-                                <ThreadList
-                                  comments={annotationComments}
-                                  replyDraft={annotationReplyDraft}
-                                  replyParentId={annotationReplyParentId}
-                                  setReplyDraft={setAnnotationReplyDraft}
-                                  setReplyParentId={setAnnotationReplyParentId}
-                                  onSubmitReply={(parentId) => handleCreateComment({
-                                    body: annotationReplyDraft,
-                                    annotationId: selectedAnnotation.id,
-                                    parentId,
-                                    onSuccess: () => {
-                                      setAnnotationReplyDraft("");
-                                      setAnnotationReplyParentId(null);
-                                    },
-                                  })}
-                                  onDeleteComment={handleDeleteComment}
-                                />
-                              ) : (
-                                <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">No comments on this pin yet.</div>
-                              )}
-                            </ScrollArea>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                          Select a pin to edit its metadata and join the thread.
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-
-                <TabsContent value="chat" className="mt-4 flex-1">
-                  <Card className="flex h-full flex-col border-slate-200 shadow-none">
-                    <CardHeader className="border-b border-slate-200 bg-slate-50 pb-4">
-                      <CardTitle className="text-slate-950">Chat</CardTitle>
-                      <CardDescription>Room chat syncs live for everyone in this session.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-5">
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                        <div className="flex items-start gap-3">
-                          <AlertCircle className="mt-0.5 h-4 w-4 text-sky-600" />
-                          <p>Use chat for room conversation. Use pin threads when feedback should stay attached to a spot on the PDF.</p>
-                        </div>
-                      </div>
-                      <form
-                        className="space-y-3"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          void handleCreateComment({
-                            body: sessionReplyParentId ? sessionReplyDraft : sessionNoteDraft,
-                            annotationId: null,
-                            parentId: sessionReplyParentId,
-                            onSuccess: () => {
-                              setSessionNoteDraft("");
-                              setSessionReplyDraft("");
-                              setSessionReplyParentId(null);
-                            },
-                          });
-                        }}
-                      >
-                        <Textarea
-                          value={sessionReplyParentId ? sessionReplyDraft : sessionNoteDraft}
-                          onChange={(event) => sessionReplyParentId ? setSessionReplyDraft(event.target.value) : setSessionNoteDraft(event.target.value)}
-                          placeholder={sessionReplyParentId ? "Reply in chat..." : "Send a message to everyone in this session..."}
-                          className="min-h-[100px] border-slate-200 bg-white"
-                        />
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-xs text-slate-500">{sessionReplyParentId ? "Your next message will post as a reply." : "Messages show up for every collaborator in the room."}</p>
-                          <div className="flex items-center gap-2">
-                            {sessionReplyParentId ? <Button type="button" variant="ghost" className="text-slate-500" onClick={() => { setSessionReplyParentId(null); setSessionReplyDraft(""); }}>Clear reply target</Button> : null}
-                            <Button type="submit" disabled={!(sessionReplyParentId ? sessionReplyDraft : sessionNoteDraft).trim()}>
-                              <Send className="mr-2 h-4 w-4" />
-                              Send message
-                            </Button>
-                          </div>
-                        </div>
-                      </form>
-                      <ScrollArea className="h-[420px] rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        {sessionChat.length ? (
-                          <ThreadList
-                            comments={sessionChat}
-                            replyDraft={sessionReplyDraft}
-                            replyParentId={sessionReplyParentId}
-                            setReplyDraft={setSessionReplyDraft}
-                            setReplyParentId={setSessionReplyParentId}
-                            onSubmitReply={(parentId) => handleCreateComment({
-                              body: sessionReplyDraft,
-                              annotationId: null,
-                              parentId,
-                              onSuccess: () => {
-                                setSessionReplyDraft("");
-                                setSessionReplyParentId(null);
-                              },
-                            })}
-                            onDeleteComment={handleDeleteComment}
-                          />
-                        ) : (
-                          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">No chat messages yet. Start the room conversation here.</div>
-                        )}
-                      </ScrollArea>
                     </CardContent>
                   </Card>
                 </TabsContent>
