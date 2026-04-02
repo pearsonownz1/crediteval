@@ -2,6 +2,7 @@ import { ChangeEvent, DragEvent, FormEvent, MouseEvent as ReactMouseEvent, Point
 import { Link, useSearchParams } from "react-router-dom";
 import EmbedPDF from "@embedpdf/snippet";
 import {
+  AlertCircle,
   Camera,
   CameraOff,
   CheckCircle2,
@@ -13,6 +14,7 @@ import {
   Link2,
   Loader2,
   MessageSquare,
+  MessageSquareReply,
   Mic,
   MicOff,
   MousePointer2,
@@ -23,6 +25,8 @@ import {
   RefreshCw,
   Save,
   Send,
+  ShieldCheck,
+  Sparkles,
   Trash2,
   Upload,
   Video,
@@ -35,8 +39,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { DEFAULT_AGORA_CHANNEL, useAgoraCall } from "@/hooks/useAgoraCall";
 import {
@@ -64,13 +70,29 @@ const statusStyles = {
   leaving: "border-amber-200 bg-amber-50 text-amber-700",
 } as const;
 
-type ChatMessage = {
-  id: number;
-  author: string;
-  role: "You" | "Team";
-  text: string;
-  timestamp: string;
-};
+const annotationTypeConfig = {
+  comment: { label: "Comment", marker: "C", badge: "border-slate-200 bg-slate-50 text-slate-700" },
+  question: { label: "Question", marker: "?", badge: "border-sky-200 bg-sky-50 text-sky-700" },
+  issue: { label: "Issue", marker: "!", badge: "border-rose-200 bg-rose-50 text-rose-700" },
+  approval: { label: "Approval", marker: "OK", badge: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+} as const;
+
+const annotationStatusConfig = {
+  open: { label: "Open", badge: "border-slate-200 bg-slate-50 text-slate-700" },
+  in_review: { label: "In review", badge: "border-amber-200 bg-amber-50 text-amber-700" },
+  resolved: { label: "Resolved", badge: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+} as const;
+
+const annotationPriorityConfig = {
+  low: { label: "Low", badge: "border-slate-200 bg-slate-50 text-slate-700" },
+  normal: { label: "Normal", badge: "border-sky-200 bg-sky-50 text-sky-700" },
+  high: { label: "High", badge: "border-orange-200 bg-orange-50 text-orange-700" },
+  urgent: { label: "Urgent", badge: "border-rose-200 bg-rose-50 text-rose-700" },
+} as const;
+
+type AnnotationType = keyof typeof annotationTypeConfig;
+type AnnotationStatus = keyof typeof annotationStatusConfig;
+type AnnotationPriority = keyof typeof annotationPriorityConfig;
 
 type SessionDocument = {
   sessionId: string;
@@ -96,28 +118,46 @@ type AnnotationRecord = {
   authorId: string;
   authorName: string;
   color: string;
+  title: string | null;
   body: string | null;
+  annotationType: AnnotationType;
+  status: AnnotationStatus;
+  priority: AnnotationPriority;
   xPercent: number;
   yPercent: number;
   createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
 };
 
-const initialMessages: ChatMessage[] = [
-  {
-    id: 1,
-    author: "Elena",
-    role: "Team",
-    text: "I’m in. Keep the birth certificate open while we verify the dates against the intake notes.",
-    timestamp: "9:12 AM",
-  },
-  {
-    id: 2,
-    author: "Ops",
-    role: "Team",
-    text: "If someone else joins from the invite link, they’ll land in this same review room and call session.",
-    timestamp: "9:18 AM",
-  },
-];
+type CommentRecord = {
+  id: string;
+  sessionId: string;
+  annotationId: string | null;
+  parentId: string | null;
+  authorId: string;
+  authorName: string;
+  color: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type AnnotationComposerState = {
+  title: string;
+  body: string;
+  annotationType: AnnotationType;
+  status: AnnotationStatus;
+  priority: AnnotationPriority;
+};
+
+const defaultAnnotationComposer = (): AnnotationComposerState => ({
+  title: "",
+  body: "",
+  annotationType: "comment",
+  status: "open",
+  priority: "normal",
+});
 
 const formatFileSize = (bytes: number) => {
   if (bytes < 1024 * 1024) {
@@ -140,6 +180,14 @@ const formatUploadedAt = (value: string | null) => {
     minute: "2-digit",
   });
 };
+
+const formatTimelineTimestamp = (value: string) =>
+  new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 
 const safeFileName = (value: string) =>
   value
@@ -177,6 +225,132 @@ const getParticipantColor = (seed: string) => {
   return PARTICIPANT_COLORS[hash % PARTICIPANT_COLORS.length];
 };
 
+const getInitials = (name: string) =>
+  name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((segment) => segment[0]?.toUpperCase() ?? "")
+    .join("") || "RV";
+
+const normalizeAnnotationRecord = (annotation: Record<string, string | number | null>): AnnotationRecord => ({
+  id: String(annotation.id),
+  sessionId: String(annotation.session_id),
+  authorId: String(annotation.author_id),
+  authorName: String(annotation.author_name),
+  color: String(annotation.color),
+  title: (annotation.title as string | null) ?? null,
+  body: (annotation.body as string | null) ?? null,
+  annotationType: ((annotation.annotation_type as AnnotationType | null) ?? "comment"),
+  status: ((annotation.status as AnnotationStatus | null) ?? "open"),
+  priority: ((annotation.priority as AnnotationPriority | null) ?? "normal"),
+  xPercent: Number(annotation.x_percent),
+  yPercent: Number(annotation.y_percent),
+  createdAt: String(annotation.created_at),
+  updatedAt: String(annotation.updated_at ?? annotation.created_at),
+  resolvedAt: (annotation.resolved_at as string | null) ?? null,
+});
+
+const normalizeCommentRecord = (comment: Record<string, string | null>): CommentRecord => ({
+  id: String(comment.id),
+  sessionId: String(comment.session_id),
+  annotationId: (comment.annotation_id as string | null) ?? null,
+  parentId: (comment.parent_id as string | null) ?? null,
+  authorId: String(comment.author_id),
+  authorName: String(comment.author_name),
+  color: String(comment.color),
+  body: String(comment.body ?? ""),
+  createdAt: String(comment.created_at),
+  updatedAt: String(comment.updated_at ?? comment.created_at),
+});
+
+function ThreadList({
+  comments,
+  replyDraft,
+  replyParentId,
+  setReplyDraft,
+  setReplyParentId,
+  onSubmitReply,
+  onDeleteComment,
+}: {
+  comments: CommentRecord[];
+  replyDraft: string;
+  replyParentId: string | null;
+  setReplyDraft: (value: string) => void;
+  setReplyParentId: (value: string | null) => void;
+  onSubmitReply: (parentId: string | null) => Promise<void>;
+  onDeleteComment: (commentId: string) => Promise<void>;
+}) {
+  const commentsByParent = useMemo(() => {
+    const groups = new Map<string | null, CommentRecord[]>();
+    comments.forEach((comment) => {
+      const existing = groups.get(comment.parentId) ?? [];
+      groups.set(comment.parentId, [...existing, comment]);
+    });
+    return groups;
+  }, [comments]);
+
+  const renderBranch = (parentId: string | null, depth: number) =>
+    (commentsByParent.get(parentId) ?? []).map((comment) => (
+      <div key={comment.id} className={cn("space-y-3", depth > 0 ? "ml-5 border-l border-slate-200 pl-4" : "")}>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <Avatar className="h-9 w-9 border border-slate-200">
+                <AvatarFallback>{getInitials(comment.authorName)}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold text-slate-950">{comment.authorName}</p>
+                  <span className="text-xs text-slate-400">{formatTimelineTimestamp(comment.createdAt)}</span>
+                  {comment.updatedAt !== comment.createdAt ? <Badge variant="outline" className="border-slate-200 text-[11px] text-slate-500">Edited</Badge> : null}
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{comment.body}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" className="h-8 px-2 text-slate-500" onClick={() => { setReplyParentId(comment.id); setReplyDraft(""); }}>
+                <MessageSquareReply className="mr-1 h-3.5 w-3.5" />
+                Reply
+              </Button>
+              <Button variant="ghost" size="sm" className="h-8 px-2 text-slate-500" onClick={() => void onDeleteComment(comment.id)}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+          {replyParentId === comment.id ? (
+            <form
+              className="mt-4 space-y-3 border-t border-slate-200 pt-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onSubmitReply(comment.id);
+              }}
+            >
+              <Textarea
+                value={replyDraft}
+                onChange={(event) => setReplyDraft(event.target.value)}
+                placeholder="Reply to this thread..."
+                className="min-h-[92px] border-slate-200 bg-slate-50"
+              />
+              <div className="flex items-center justify-end gap-2">
+                <Button type="button" variant="ghost" className="text-slate-500" onClick={() => { setReplyParentId(null); setReplyDraft(""); }}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={!replyDraft.trim()}>
+                  <Send className="mr-2 h-4 w-4" />
+                  Reply
+                </Button>
+              </div>
+            </form>
+          ) : null}
+        </div>
+        {renderBranch(comment.id, depth + 1)}
+      </div>
+    ));
+
+  return <div className="space-y-3">{renderBranch(null, 0)}</div>;
+}
+
 export default function PdfWorkspacePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const resolvedSession = useMemo(() => resolveSession(searchParams), [searchParams]);
@@ -188,9 +362,8 @@ export default function PdfWorkspacePage() {
   const cursorTimeoutRef = useRef<number | null>(null);
   const pendingCursorRef = useRef<{ xPercent: number; yPercent: number } | null>(null);
   const localParticipantId = useRef(getStoredParticipantId());
+
   const [isDragging, setIsDragging] = useState(false);
-  const [chatDraft, setChatDraft] = useState("");
-  const [messages, setMessages] = useState(initialMessages);
   const [sessionIdInput, setSessionIdInput] = useState(resolvedSession.sessionId);
   const [sessionNameInput, setSessionNameInput] = useState(resolvedSession.sessionName);
   const [participantName, setParticipantName] = useState(getStoredParticipantName);
@@ -198,12 +371,20 @@ export default function PdfWorkspacePage() {
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [presenceParticipants, setPresenceParticipants] = useState<WorkspacePresence[]>([]);
   const [annotations, setAnnotations] = useState<AnnotationRecord[]>([]);
-  const [annotationDraft, setAnnotationDraft] = useState("");
+  const [comments, setComments] = useState<CommentRecord[]>([]);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [interactionMode, setInteractionMode] = useState<"navigate" | "annotate">("navigate");
+  const [annotationComposer, setAnnotationComposer] = useState<AnnotationComposerState>(defaultAnnotationComposer);
+  const [selectedAnnotationDraft, setSelectedAnnotationDraft] = useState<AnnotationComposerState>(defaultAnnotationComposer);
+  const [sessionNoteDraft, setSessionNoteDraft] = useState("");
+  const [annotationReplyDraft, setAnnotationReplyDraft] = useState("");
+  const [annotationReplyParentId, setAnnotationReplyParentId] = useState<string | null>(null);
+  const [sessionReplyDraft, setSessionReplyDraft] = useState("");
+  const [sessionReplyParentId, setSessionReplyParentId] = useState<string | null>(null);
   const [isPresenceReady, setIsPresenceReady] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSavingAnnotation, setIsSavingAnnotation] = useState(false);
   const [sessionError, setSessionError] = useState("");
   const { toast } = useToast();
 
@@ -233,10 +414,7 @@ export default function PdfWorkspacePage() {
     leftMessage: "Call ended. The shared PDF session is still live, and you can rejoin whenever you need.",
   });
 
-  const localParticipantColor = useMemo(
-    () => getParticipantColor(localParticipantId.current),
-    [],
-  );
+  const localParticipantColor = useMemo(() => getParticipantColor(localParticipantId.current), []);
   const selectedAnnotation = useMemo(
     () => annotations.find((annotation) => annotation.id === selectedAnnotationId) ?? null,
     [annotations, selectedAnnotationId],
@@ -245,6 +423,52 @@ export default function PdfWorkspacePage() {
     () => presenceParticipants.filter((participant) => !participant.isSelf),
     [presenceParticipants],
   );
+  const metadata = useMemo(() => {
+    if (!documentRecord) {
+      return null;
+    }
+
+    return {
+      name: documentRecord.originalFilename ?? "Awaiting upload",
+      size: documentRecord.fileSize ? formatFileSize(documentRecord.fileSize) : "Not available",
+      uploadedAt: formatUploadedAt(documentRecord.uploadedAt),
+    };
+  }, [documentRecord]);
+  const annotationComments = useMemo(
+    () => comments.filter((comment) => comment.annotationId === selectedAnnotationId),
+    [comments, selectedAnnotationId],
+  );
+  const sessionNotes = useMemo(
+    () => comments.filter((comment) => comment.annotationId === null),
+    [comments],
+  );
+  const annotationCommentCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    comments.forEach((comment) => {
+      if (!comment.annotationId) {
+        return;
+      }
+      counts.set(comment.annotationId, (counts.get(comment.annotationId) ?? 0) + 1);
+    });
+    return counts;
+  }, [comments]);
+  const annotationSummary = useMemo(() => {
+    const summary = {
+      open: 0,
+      inReview: 0,
+      resolved: 0,
+      urgent: 0,
+    };
+
+    annotations.forEach((annotation) => {
+      if (annotation.status === "open") summary.open += 1;
+      if (annotation.status === "in_review") summary.inReview += 1;
+      if (annotation.status === "resolved") summary.resolved += 1;
+      if (annotation.priority === "urgent") summary.urgent += 1;
+    });
+
+    return summary;
+  }, [annotations]);
 
   useEffect(() => {
     if (!searchParams.get("session")) {
@@ -330,42 +554,64 @@ export default function PdfWorkspacePage() {
 
   useEffect(() => {
     setAnnotations([]);
+    setComments([]);
     setSelectedAnnotationId(null);
+    setSelectedAnnotationDraft(defaultAnnotationComposer());
+    setAnnotationReplyDraft("");
+    setAnnotationReplyParentId(null);
+    setSessionReplyDraft("");
+    setSessionReplyParentId(null);
 
     let isMounted = true;
 
-    const loadAnnotations = async () => {
-      const { data, error } = await supabase
-        .from("pdf_collab_annotations")
-        .select("id, session_id, author_id, author_name, color, body, x_percent, y_percent, created_at")
-        .eq("session_id", resolvedSession.sessionId)
-        .order("created_at", { ascending: true });
+    const loadReviewState = async () => {
+      const [{ data: annotationData, error: annotationError }, { data: commentData, error: commentError }] = await Promise.all([
+        supabase
+          .from("pdf_collab_annotations")
+          .select("id, session_id, author_id, author_name, color, title, body, annotation_type, status, priority, x_percent, y_percent, created_at, updated_at, resolved_at")
+          .eq("session_id", resolvedSession.sessionId)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("pdf_collab_comments")
+          .select("id, session_id, annotation_id, parent_id, author_id, author_name, color, body, created_at, updated_at")
+          .eq("session_id", resolvedSession.sessionId)
+          .order("created_at", { ascending: true }),
+      ]);
 
-      if (!isMounted || error) {
+      if (!isMounted) {
         return;
       }
 
-      setAnnotations(
-        (data || []).map((annotation) => ({
-          id: annotation.id,
-          sessionId: annotation.session_id,
-          authorId: annotation.author_id,
-          authorName: annotation.author_name,
-          color: annotation.color,
-          body: annotation.body,
-          xPercent: Number(annotation.x_percent),
-          yPercent: Number(annotation.y_percent),
-          createdAt: annotation.created_at,
-        })),
-      );
+      if (!annotationError) {
+        setAnnotations((annotationData || []).map((annotation) => normalizeAnnotationRecord(annotation as unknown as Record<string, string | number | null>)));
+      }
+
+      if (!commentError) {
+        setComments((commentData || []).map((comment) => normalizeCommentRecord(comment as unknown as Record<string, string | null>)));
+      }
     };
 
-    void loadAnnotations();
+    void loadReviewState();
 
     return () => {
       isMounted = false;
     };
   }, [resolvedSession.sessionId]);
+
+  useEffect(() => {
+    if (!selectedAnnotation) {
+      setSelectedAnnotationDraft(defaultAnnotationComposer());
+      return;
+    }
+
+    setSelectedAnnotationDraft({
+      title: selectedAnnotation.title ?? "",
+      body: selectedAnnotation.body ?? "",
+      annotationType: selectedAnnotation.annotationType,
+      status: selectedAnnotation.status,
+      priority: selectedAnnotation.priority,
+    });
+  }, [selectedAnnotation]);
 
   useEffect(() => {
     if (!viewerHostRef.current) {
@@ -426,6 +672,32 @@ export default function PdfWorkspacePage() {
       },
     });
 
+    const upsertAnnotation = (record: AnnotationRecord) => {
+      setAnnotations((current) => {
+        const existingIndex = current.findIndex((annotation) => annotation.id === record.id);
+        if (existingIndex === -1) {
+          return [...current, record].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+        }
+
+        const next = [...current];
+        next[existingIndex] = record;
+        return next;
+      });
+    };
+
+    const upsertComment = (record: CommentRecord) => {
+      setComments((current) => {
+        const existingIndex = current.findIndex((comment) => comment.id === record.id);
+        if (existingIndex === -1) {
+          return [...current, record].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+        }
+
+        const next = [...current];
+        next[existingIndex] = record;
+        return next;
+      });
+    };
+
     presenceChannelRef.current = channel;
     setIsPresenceReady(false);
 
@@ -466,28 +738,8 @@ export default function PdfWorkspacePage() {
           filter: `session_id=eq.${resolvedSession.sessionId}`,
         },
         (payload) => {
-          if (payload.eventType === "INSERT") {
-            const next = payload.new as Record<string, string | number | null>;
-            setAnnotations((current) => {
-              if (current.some((annotation) => annotation.id === next.id)) {
-                return current;
-              }
-
-              return [
-                ...current,
-                {
-                  id: String(next.id),
-                  sessionId: String(next.session_id),
-                  authorId: String(next.author_id),
-                  authorName: String(next.author_name),
-                  color: String(next.color),
-                  body: (next.body as string | null) ?? null,
-                  xPercent: Number(next.x_percent),
-                  yPercent: Number(next.y_percent),
-                  createdAt: String(next.created_at),
-                },
-              ];
-            });
+          if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+            upsertAnnotation(normalizeAnnotationRecord(payload.new as Record<string, string | number | null>));
             return;
           }
 
@@ -495,6 +747,26 @@ export default function PdfWorkspacePage() {
             const previous = payload.old as Record<string, string | null>;
             setAnnotations((current) => current.filter((annotation) => annotation.id !== previous.id));
             setSelectedAnnotationId((current) => (current === previous.id ? null : current));
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "pdf_collab_comments",
+          filter: `session_id=eq.${resolvedSession.sessionId}`,
+        },
+        (payload) => {
+          if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+            upsertComment(normalizeCommentRecord(payload.new as Record<string, string | null>));
+            return;
+          }
+
+          if (payload.eventType === "DELETE") {
+            const previous = payload.old as Record<string, string | null>;
+            setComments((current) => current.filter((comment) => comment.id !== previous.id));
           }
         },
       )
@@ -538,18 +810,6 @@ export default function PdfWorkspacePage() {
       cursor: null,
     });
   }, [isPresenceReady, localParticipantColor, participantName]);
-
-  const metadata = useMemo(() => {
-    if (!documentRecord) {
-      return null;
-    }
-
-    return {
-      name: documentRecord.originalFilename ?? "Awaiting upload",
-      size: documentRecord.fileSize ? formatFileSize(documentRecord.fileSize) : "Not available",
-      uploadedAt: formatUploadedAt(documentRecord.uploadedAt),
-    };
-  }, [documentRecord]);
 
   const persistSession = async (
     nextSessionId: string,
@@ -599,6 +859,19 @@ export default function PdfWorkspacePage() {
     }
 
     return nextRecord;
+  };
+
+  const ensureCurrentSessionRecord = async () => {
+    if (documentRecord?.sessionId === resolvedSession.sessionId) {
+      return documentRecord;
+    }
+
+    return persistSession(
+      normalizeSessionId(sessionIdInput || resolvedSession.sessionId),
+      normalizeSessionName(sessionNameInput || resolvedSession.sessionName, resolvedSession.sessionId),
+      undefined,
+      false,
+    );
   };
 
   const applySessionDetails = async (options?: { announce?: boolean }) => {
@@ -702,23 +975,6 @@ export default function PdfWorkspacePage() {
     link.click();
   };
 
-  const handleSendMessage = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!chatDraft.trim()) return;
-
-    setMessages((current) => [
-      ...current,
-      {
-        id: Date.now(),
-        author: "You",
-        role: "You",
-        text: chatDraft.trim(),
-        timestamp: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
-      },
-    ]);
-    setChatDraft("");
-  };
-
   const trackCursor = async (cursor: { xPercent: number; yPercent: number } | null) => {
     const channel = presenceChannelRef.current;
     if (!channel || !isPresenceReady) {
@@ -799,6 +1055,8 @@ export default function PdfWorkspacePage() {
     const xPercent = Number((((event.clientX - bounds.left) / bounds.width) * 100).toFixed(2));
     const yPercent = Number((((event.clientY - bounds.top) / bounds.height) * 100).toFixed(2));
 
+    await ensureCurrentSessionRecord();
+
     const { data, error } = await supabase
       .from("pdf_collab_annotations")
       .insert({
@@ -806,11 +1064,15 @@ export default function PdfWorkspacePage() {
         author_id: localParticipantId.current,
         author_name: participantName.trim() || "Reviewer",
         color: localParticipantColor,
-        body: annotationDraft.trim() || null,
+        title: annotationComposer.title.trim() || null,
+        body: annotationComposer.body.trim() || null,
+        annotation_type: annotationComposer.annotationType,
+        status: annotationComposer.status,
+        priority: annotationComposer.priority,
         x_percent: xPercent,
         y_percent: yPercent,
       })
-      .select("id, session_id, author_id, author_name, color, body, x_percent, y_percent, created_at")
+      .select("id, session_id, author_id, author_name, color, title, body, annotation_type, status, priority, x_percent, y_percent, created_at, updated_at, resolved_at")
       .single();
 
     if (error) {
@@ -822,22 +1084,49 @@ export default function PdfWorkspacePage() {
       return;
     }
 
-    const nextAnnotation: AnnotationRecord = {
-      id: data.id,
-      sessionId: data.session_id,
-      authorId: data.author_id,
-      authorName: data.author_name,
-      color: data.color,
-      body: data.body,
-      xPercent: Number(data.x_percent),
-      yPercent: Number(data.y_percent),
-      createdAt: data.created_at,
-    };
-
+    const nextAnnotation = normalizeAnnotationRecord(data as unknown as Record<string, string | number | null>);
     setAnnotations((current) => (current.some((annotation) => annotation.id === nextAnnotation.id) ? current : [...current, nextAnnotation]));
     setSelectedAnnotationId(nextAnnotation.id);
     setInteractionMode("navigate");
-    setAnnotationDraft("");
+    setAnnotationComposer(defaultAnnotationComposer());
+  };
+
+  const handleSaveSelectedAnnotation = async () => {
+    if (!selectedAnnotation) {
+      return;
+    }
+
+    setIsSavingAnnotation(true);
+    const { data, error } = await supabase
+      .from("pdf_collab_annotations")
+      .update({
+        title: selectedAnnotationDraft.title.trim() || null,
+        body: selectedAnnotationDraft.body.trim() || null,
+        annotation_type: selectedAnnotationDraft.annotationType,
+        status: selectedAnnotationDraft.status,
+        priority: selectedAnnotationDraft.priority,
+      })
+      .eq("id", selectedAnnotation.id)
+      .select("id, session_id, author_id, author_name, color, title, body, annotation_type, status, priority, x_percent, y_percent, created_at, updated_at, resolved_at")
+      .single();
+
+    setIsSavingAnnotation(false);
+
+    if (error) {
+      toast({
+        title: "Review card not saved",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const nextAnnotation = normalizeAnnotationRecord(data as unknown as Record<string, string | number | null>);
+    setAnnotations((current) => current.map((annotation) => (annotation.id === nextAnnotation.id ? nextAnnotation : annotation)));
+    toast({
+      title: "Review card updated",
+      description: "Status, priority, and notes now sync for the session.",
+    });
   };
 
   const handleDeleteAnnotation = async (annotationId: string) => {
@@ -854,6 +1143,48 @@ export default function PdfWorkspacePage() {
 
     setAnnotations((current) => current.filter((annotation) => annotation.id !== annotationId));
     setSelectedAnnotationId((current) => (current === annotationId ? null : current));
+  };
+
+  const handleCreateComment = async (options: { body: string; annotationId?: string | null; parentId?: string | null; onSuccess?: () => void }) => {
+    const body = options.body.trim();
+    if (!body) {
+      return;
+    }
+
+    await ensureCurrentSessionRecord();
+
+    const { error } = await supabase.from("pdf_collab_comments").insert({
+      session_id: resolvedSession.sessionId,
+      annotation_id: options.annotationId ?? null,
+      parent_id: options.parentId ?? null,
+      author_id: localParticipantId.current,
+      author_name: participantName.trim() || "Reviewer",
+      color: localParticipantColor,
+      body,
+    });
+
+    if (error) {
+      toast({
+        title: "Comment not sent",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    options.onSuccess?.();
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    const { error } = await supabase.from("pdf_collab_comments").delete().eq("id", commentId);
+
+    if (error) {
+      toast({
+        title: "Comment not removed",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleCopyInviteLink = async () => {
@@ -887,6 +1218,9 @@ export default function PdfWorkspacePage() {
       uploadedAt: null,
     });
     setViewerUrl(null);
+    setAnnotations([]);
+    setComments([]);
+    setSelectedAnnotationId(null);
     setSearchParams(buildSessionSearchParams(nextSessionId, nextSessionName, token.trim()));
     toast({ title: "New session created", description: `Room ${nextSessionId} is ready for a new document.` });
   };
@@ -895,15 +1229,15 @@ export default function PdfWorkspacePage() {
   const invitePath = buildPdfSessionPath(resolvedSession.sessionId, resolvedSession.sessionName, token.trim());
 
   return (
-    <section className="min-h-screen bg-[linear-gradient(180deg,#eff6ff_0%,#f8fafc_30%,#ffffff_100%)] px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto flex w-full max-w-[1700px] flex-col gap-5">
+    <section className="min-h-screen bg-[linear-gradient(180deg,#eff6ff_0%,#f8fafc_22%,#ffffff_100%)] px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-[1720px] flex-col gap-5">
         <div className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.10)]">
-          <div className="flex flex-col gap-5 border-b border-slate-200 bg-slate-950 px-6 py-5 text-white xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-col gap-5 border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,#1e3a8a_0%,#0f172a_58%,#020617_100%)] px-6 py-5 text-white xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sky-300">Collaborative PDF review</p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Review the document, keep the call live, and share the same file with the room</h1>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Review the document, keep the call live, and work the thread like a real review room</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
-                Upload once to Supabase, share the invite link, and everyone lands in the same document session while the Agora call runs beside it.
+                Shared PDF, live cursors, Agora video, richer review cards, and synced session notes all stay on the same session key.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -926,15 +1260,19 @@ export default function PdfWorkspacePage() {
             </div>
           </div>
 
-          <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1.6fr)_420px]">
+          <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1.65fr)_440px]">
             <Card className="overflow-hidden border-slate-200 shadow-none">
               <CardHeader className="border-b border-slate-200 bg-slate-50">
-                <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <CardTitle className="text-slate-950">Document viewer</CardTitle>
-                    <CardDescription>The PDF stays central. Presence cursors and lightweight shared markups now sit on top of the workspace for live review.</CardDescription>
+                    <CardDescription>Shared review markers, threaded responses, and collaborator presence stay pinned to the same PDF surface.</CardDescription>
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2">
+                    <div className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
+                      <Sparkles className="mr-1.5 h-3.5 w-3.5 text-amber-500" />
+                      {annotations.length} review item{annotations.length === 1 ? "" : "s"}
+                    </div>
                     {presenceParticipants.slice(0, 4).map((participant) => (
                       <div key={participant.id} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
                         <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: participant.color }} />
@@ -987,15 +1325,20 @@ export default function PdfWorkspacePage() {
                   </div>
                 ) : (
                   <div className="flex min-h-[820px] flex-col bg-slate-100">
-                    <div className="flex flex-col gap-3 border-b border-slate-200 bg-white px-5 py-3">
-                      <div className="flex items-center justify-between gap-4">
+                    <div className="flex flex-col gap-4 border-b border-slate-200 bg-white px-5 py-4">
+                      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium text-slate-950">{documentRecord.originalFilename}</p>
                           <p className="text-xs text-slate-500">{metadata?.size} · Shared in session {resolvedSession.sessionId}</p>
                         </div>
-                        <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">EmbedPDF viewer</div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline" className="border-slate-300 text-slate-600">
+                            {otherParticipants.length} collaborator{otherParticipants.length === 1 ? "" : "s"} live
+                          </Badge>
+                          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">EmbedPDF viewer</div>
+                        </div>
                       </div>
-                      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                      <div className="grid gap-3 xl:grid-cols-[auto,1fr]">
                         <div className="flex flex-wrap items-center gap-2">
                           <Button
                             type="button"
@@ -1013,43 +1356,88 @@ export default function PdfWorkspacePage() {
                             onClick={() => setInteractionMode("annotate")}
                           >
                             <PenLine className="mr-2 h-4 w-4" />
-                            Drop markup
+                            Drop review card
                           </Button>
-                          <Badge variant="outline" className="border-slate-300 text-slate-600">
-                            {otherParticipants.length} collaborator{otherParticipants.length === 1 ? "" : "s"} live
-                          </Badge>
                         </div>
-                        <div className="flex flex-1 items-center gap-2 xl:max-w-md">
+                        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr),150px,150px,150px]">
                           <Input
-                            value={annotationDraft}
-                            onChange={(event) => setAnnotationDraft(event.target.value)}
-                            placeholder="Optional note for the next markup"
+                            value={annotationComposer.title}
+                            onChange={(event) => setAnnotationComposer((current) => ({ ...current, title: event.target.value }))}
+                            placeholder="Review card title"
                           />
+                          <Select value={annotationComposer.annotationType} onValueChange={(value: AnnotationType) => setAnnotationComposer((current) => ({ ...current, annotationType: value }))}>
+                            <SelectTrigger className="border-slate-300 bg-white">
+                              <SelectValue placeholder="Type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(annotationTypeConfig).map(([value, config]) => (
+                                <SelectItem key={value} value={value}>{config.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select value={annotationComposer.status} onValueChange={(value: AnnotationStatus) => setAnnotationComposer((current) => ({ ...current, status: value }))}>
+                            <SelectTrigger className="border-slate-300 bg-white">
+                              <SelectValue placeholder="Status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(annotationStatusConfig).map(([value, config]) => (
+                                <SelectItem key={value} value={value}>{config.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select value={annotationComposer.priority} onValueChange={(value: AnnotationPriority) => setAnnotationComposer((current) => ({ ...current, priority: value }))}>
+                            <SelectTrigger className="border-slate-300 bg-white">
+                              <SelectValue placeholder="Priority" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(annotationPriorityConfig).map(([value, config]) => (
+                                <SelectItem key={value} value={value}>{config.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
+                      <Textarea
+                        value={annotationComposer.body}
+                        onChange={(event) => setAnnotationComposer((current) => ({ ...current, body: event.target.value }))}
+                        placeholder="Optional detail for the next review card"
+                        className="min-h-[84px] border-slate-200 bg-slate-50"
+                      />
                     </div>
                     <div className="relative h-[980px] w-full overflow-hidden bg-white" onPointerMove={handleWorkspacePointerMove} onPointerLeave={handleWorkspacePointerLeave}>
                       <div ref={viewerHostRef} className="h-full w-full bg-white" />
                       <div className="pointer-events-none absolute inset-0 z-10">
-                        {annotations.map((annotation, index) => (
-                          <button
-                            key={annotation.id}
-                            type="button"
-                            className={cn(
-                              "pointer-events-auto absolute flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white text-xs font-semibold text-white shadow-[0_10px_30px_rgba(15,23,42,0.24)] transition hover:scale-105",
-                              selectedAnnotationId === annotation.id ? "ring-4 ring-sky-100" : "",
-                            )}
-                            style={{
-                              left: `${annotation.xPercent}%`,
-                              top: `${annotation.yPercent}%`,
-                              backgroundColor: annotation.color,
-                            }}
-                            onClick={() => setSelectedAnnotationId(annotation.id)}
-                            title={annotation.body || `Markup ${index + 1}`}
-                          >
-                            {index + 1}
-                          </button>
-                        ))}
+                        {annotations.map((annotation, index) => {
+                          const typeConfig = annotationTypeConfig[annotation.annotationType];
+                          const statusConfig = annotationStatusConfig[annotation.status];
+
+                          return (
+                            <button
+                              key={annotation.id}
+                              type="button"
+                              className={cn(
+                                "pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-[20px] border-2 border-white px-2 py-1 text-left text-white shadow-[0_10px_30px_rgba(15,23,42,0.24)] transition hover:scale-[1.02]",
+                                annotation.status === "resolved" ? "opacity-80" : "",
+                                selectedAnnotationId === annotation.id ? "ring-4 ring-sky-100" : "",
+                              )}
+                              style={{
+                                left: `${annotation.xPercent}%`,
+                                top: `${annotation.yPercent}%`,
+                                backgroundColor: annotation.color,
+                              }}
+                              onClick={() => setSelectedAnnotationId(annotation.id)}
+                              title={annotation.title || annotation.body || `Markup ${index + 1}`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-white/20 px-2 text-[11px] font-bold">{typeConfig.marker}</span>
+                                <div className="min-w-0">
+                                  <p className="max-w-[170px] truncate text-xs font-semibold">{annotation.title || `${typeConfig.label} ${index + 1}`}</p>
+                                  <p className="text-[10px] uppercase tracking-[0.18em] text-white/75">{statusConfig.label}</p>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
                         {otherParticipants.map((participant) =>
                           participant.cursor ? (
                             <div
@@ -1078,7 +1466,7 @@ export default function PdfWorkspacePage() {
                           type="button"
                           className="absolute inset-0 z-20 cursor-crosshair bg-transparent"
                           onClick={handleAnnotationPlacement}
-                          aria-label="Place shared markup"
+                          aria-label="Place shared review card"
                         />
                       ) : null}
                     </div>
@@ -1096,7 +1484,7 @@ export default function PdfWorkspacePage() {
                         <Video className="mr-2 h-5 w-5 text-sky-300" />
                         Live room
                       </CardTitle>
-                      <CardDescription className="text-slate-300">Video and audio stay pinned at the top of the collaboration rail while the PDF remains the main workspace.</CardDescription>
+                      <CardDescription className="text-slate-300">Video and audio stay pinned beside the review rail while the document remains the main workspace.</CardDescription>
                     </div>
                     <Badge variant="outline" className={cn("rounded-full border px-3 py-1 text-xs font-medium", statusStyles[status])}>
                       <Radio className="mr-1.5 h-3.5 w-3.5" />
@@ -1121,10 +1509,12 @@ export default function PdfWorkspacePage() {
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Button onClick={() => void joinCall()} disabled={isJoined || isBusy} className="h-11">
-                      {status === "joining" ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Phone className="mr-2 h-4 w-4" />}Join call
+                      {status === "joining" ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Phone className="mr-2 h-4 w-4" />}
+                      Join call
                     </Button>
                     <Button variant="outline" onClick={() => void leaveCall()} disabled={!isJoined || isBusy} className="h-11 border-slate-300">
-                      <PhoneOff className="mr-2 h-4 w-4" />Leave
+                      <PhoneOff className="mr-2 h-4 w-4" />
+                      Leave
                     </Button>
                   </div>
 
@@ -1159,11 +1549,54 @@ export default function PdfWorkspacePage() {
                 </CardContent>
               </Card>
 
+              <Card className="border-slate-200 shadow-none">
+                <CardHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_100%)] pb-4">
+                  <CardTitle className="flex items-center text-slate-950">
+                    <ShieldCheck className="mr-2 h-5 w-5 text-sky-600" />
+                    Presence roster
+                  </CardTitle>
+                  <CardDescription>Who is in the session, who is moving on the document, and where review attention is concentrated.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 p-5">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Reviewers live</p>
+                      <p className="mt-2 text-3xl font-semibold text-slate-950">{presenceParticipants.length}</p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Active cursors</p>
+                      <p className="mt-2 text-3xl font-semibold text-slate-950">{presenceParticipants.filter((participant) => participant.cursor).length}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    {presenceParticipants.length ? presenceParticipants.map((participant) => (
+                      <div key={participant.id} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <Avatar className="h-10 w-10 border border-slate-200">
+                            <AvatarFallback style={{ backgroundColor: `${participant.color}20`, color: participant.color }}>
+                              {getInitials(participant.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="truncate text-sm font-semibold text-slate-950">{participant.name}</p>
+                              {participant.isSelf ? <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">You</Badge> : null}
+                            </div>
+                            <p className="text-xs text-slate-500">{participant.cursor ? `Pointer at ${participant.cursor.xPercent.toFixed(1)}%, ${participant.cursor.yPercent.toFixed(1)}%` : "Watching document"}</p>
+                          </div>
+                        </div>
+                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: participant.color }} />
+                      </div>
+                    )) : <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">Presence will appear after the realtime channel finishes joining.</div>}
+                  </div>
+                </CardContent>
+              </Card>
+
               <Tabs defaultValue="session" className="flex min-h-0 flex-1 flex-col">
                 <TabsList className="grid w-full grid-cols-3 bg-slate-100">
                   <TabsTrigger value="session"><FileBadge2 className="mr-2 h-4 w-4" />Session</TabsTrigger>
-                  <TabsTrigger value="markup"><PenLine className="mr-2 h-4 w-4" />Markup</TabsTrigger>
-                  <TabsTrigger value="chat"><MessageSquare className="mr-2 h-4 w-4" />Chat</TabsTrigger>
+                  <TabsTrigger value="markup"><PenLine className="mr-2 h-4 w-4" />Review</TabsTrigger>
+                  <TabsTrigger value="chat"><MessageSquare className="mr-2 h-4 w-4" />Notes</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="session" className="mt-4 flex-1">
@@ -1175,7 +1608,7 @@ export default function PdfWorkspacePage() {
                     <CardContent className="space-y-4 p-5">
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-slate-700" htmlFor="workspace-participant-name">Your display name</label>
-                        <Input id="workspace-participant-name" value={participantName} onChange={(event) => setParticipantName(event.target.value)} placeholder="Reviewer name used for cursors and markups" />
+                        <Input id="workspace-participant-name" value={participantName} onChange={(event) => setParticipantName(event.target.value)} placeholder="Reviewer name used for cursors and review threads" />
                       </div>
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-slate-700" htmlFor="workspace-session-name">Session name</label>
@@ -1191,13 +1624,16 @@ export default function PdfWorkspacePage() {
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Button type="button" variant="outline" className="border-slate-300" onClick={handleCopyInviteLink} disabled={isBusy || isUploading}>
-                          <Copy className="mr-2 h-4 w-4" />Copy link
+                          <Copy className="mr-2 h-4 w-4" />
+                          Copy link
                         </Button>
                         <Button type="button" variant="outline" className="border-slate-300" onClick={handleNewSession} disabled={isBusy || isUploading}>
-                          <RefreshCw className="mr-2 h-4 w-4" />New session
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          New session
                         </Button>
                         <Button type="button" onClick={() => void applySessionDetails()} disabled={isBusy || isUploading}>
-                          <Save className="mr-2 h-4 w-4" />Save session
+                          <Save className="mr-2 h-4 w-4" />
+                          Save session
                         </Button>
                       </div>
                       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
@@ -1228,7 +1664,7 @@ export default function PdfWorkspacePage() {
                         </div>
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
                           <p className="font-medium text-slate-950">Presence sync</p>
-                          <p className="mt-2">Supabase Presence keeps reviewer cursors live in the active session, while the session record and shared PDF stay on the same `session_id` key.</p>
+                          <p className="mt-2">Supabase Presence keeps reviewer cursors live in the active session, while sessions, review cards, and shared notes now all sync on the same <code>session_id</code>.</p>
                         </div>
                       </div>
                       {sessionError ? (
@@ -1244,57 +1680,203 @@ export default function PdfWorkspacePage() {
                 <TabsContent value="markup" className="mt-4 flex-1">
                   <Card className="flex h-full flex-col border-slate-200 shadow-none">
                     <CardHeader className="border-b border-slate-200 bg-slate-50 pb-4">
-                      <CardTitle className="text-slate-950">Shared markups</CardTitle>
-                      <CardDescription>Drop quick pins on the PDF surface. Every annotation is stored by session and syncs to everyone in the room.</CardDescription>
+                      <CardTitle className="text-slate-950">Review queue</CardTitle>
+                      <CardDescription>Typed annotation cards, status, priority, and threaded discussion all sync for the room.</CardDescription>
                     </CardHeader>
                     <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-5">
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                        <p className="font-medium text-slate-950">How it works</p>
-                        <p className="mt-2">Switch to <span className="font-medium">Drop markup</span>, click the document, and a shared note pin is inserted for the whole session.</p>
+                      <div className="grid gap-3 sm:grid-cols-4">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                          <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Open</p>
+                          <p className="mt-2 text-2xl font-semibold text-slate-950">{annotationSummary.open}</p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                          <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">In review</p>
+                          <p className="mt-2 text-2xl font-semibold text-slate-950">{annotationSummary.inReview}</p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                          <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Resolved</p>
+                          <p className="mt-2 text-2xl font-semibold text-slate-950">{annotationSummary.resolved}</p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                          <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Urgent</p>
+                          <p className="mt-2 text-2xl font-semibold text-slate-950">{annotationSummary.urgent}</p>
+                        </div>
                       </div>
-                      <ScrollArea className="h-[360px] rounded-2xl border border-slate-200 bg-white">
+
+                      <ScrollArea className="h-[280px] rounded-2xl border border-slate-200 bg-white">
                         <div className="space-y-3 p-4">
                           {annotations.length ? annotations.map((annotation, index) => (
                             <button
                               key={annotation.id}
                               type="button"
                               className={cn(
-                                "w-full rounded-2xl border px-4 py-3 text-left transition",
+                                "w-full rounded-2xl border px-4 py-4 text-left transition",
                                 selectedAnnotationId === annotation.id ? "border-sky-300 bg-sky-50" : "border-slate-200 bg-white hover:border-slate-300",
                               )}
                               onClick={() => setSelectedAnnotationId(annotation.id)}
                             >
                               <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <div className="flex items-center gap-2 text-sm font-medium text-slate-950">
-                                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold text-white" style={{ backgroundColor: annotation.color }}>
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold text-white" style={{ backgroundColor: annotation.color }}>
                                       {index + 1}
                                     </span>
-                                    <span>{annotation.authorName}</span>
+                                    <p className="text-sm font-semibold text-slate-950">{annotation.title || `${annotationTypeConfig[annotation.annotationType].label} ${index + 1}`}</p>
+                                    <Badge variant="outline" className={annotationTypeConfig[annotation.annotationType].badge}>{annotationTypeConfig[annotation.annotationType].label}</Badge>
+                                    <Badge variant="outline" className={annotationStatusConfig[annotation.status].badge}>{annotationStatusConfig[annotation.status].label}</Badge>
+                                    <Badge variant="outline" className={annotationPriorityConfig[annotation.priority].badge}>{annotationPriorityConfig[annotation.priority].label}</Badge>
                                   </div>
-                                  <p className="mt-2 text-sm leading-6 text-slate-700">{annotation.body || "Untitled markup"}</p>
-                                  <p className="mt-2 text-xs text-slate-500">{new Date(annotation.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>
+                                  <p className="mt-2 text-sm leading-6 text-slate-700">{annotation.body || "No additional detail yet."}</p>
+                                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                                    <span>{annotation.authorName}</span>
+                                    <span>{formatTimelineTimestamp(annotation.createdAt)}</span>
+                                    <span>{annotation.xPercent.toFixed(1)}%, {annotation.yPercent.toFixed(1)}%</span>
+                                    <span>{annotationCommentCounts.get(annotation.id) ?? 0} comment{(annotationCommentCounts.get(annotation.id) ?? 0) === 1 ? "" : "s"}</span>
+                                  </div>
                                 </div>
-                                <span className="text-xs text-slate-400">{annotation.xPercent.toFixed(1)}%, {annotation.yPercent.toFixed(1)}%</span>
                               </div>
                             </button>
-                          )) : <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">No shared markups yet.</div>}
+                          )) : <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">No shared review cards yet. Drop one on the PDF to start the queue.</div>}
                         </div>
                       </ScrollArea>
+
                       {selectedAnnotation ? (
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex min-h-0 flex-1 flex-col gap-4 rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-5">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <p className="text-sm font-semibold text-slate-950">{selectedAnnotation.authorName}</p>
-                              <p className="mt-1 text-sm leading-6 text-slate-700">{selectedAnnotation.body || "Untitled markup"}</p>
+                              <p className="text-lg font-semibold text-slate-950">{selectedAnnotation.title || "Selected review card"}</p>
+                              <p className="mt-1 text-sm text-slate-500">Created by {selectedAnnotation.authorName} · {formatTimelineTimestamp(selectedAnnotation.createdAt)}</p>
                             </div>
                             <Button variant="outline" size="sm" className="border-slate-300" onClick={() => void handleDeleteAnnotation(selectedAnnotation.id)}>
                               <Trash2 className="mr-2 h-4 w-4" />
                               Delete
                             </Button>
                           </div>
+
+                          <div className="grid gap-3 md:grid-cols-3">
+                            <Select value={selectedAnnotationDraft.annotationType} onValueChange={(value: AnnotationType) => setSelectedAnnotationDraft((current) => ({ ...current, annotationType: value }))}>
+                              <SelectTrigger className="border-slate-300 bg-white">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {Object.entries(annotationTypeConfig).map(([value, config]) => (
+                                  <SelectItem key={value} value={value}>{config.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Select value={selectedAnnotationDraft.status} onValueChange={(value: AnnotationStatus) => setSelectedAnnotationDraft((current) => ({ ...current, status: value }))}>
+                              <SelectTrigger className="border-slate-300 bg-white">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {Object.entries(annotationStatusConfig).map(([value, config]) => (
+                                  <SelectItem key={value} value={value}>{config.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Select value={selectedAnnotationDraft.priority} onValueChange={(value: AnnotationPriority) => setSelectedAnnotationDraft((current) => ({ ...current, priority: value }))}>
+                              <SelectTrigger className="border-slate-300 bg-white">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {Object.entries(annotationPriorityConfig).map(([value, config]) => (
+                                  <SelectItem key={value} value={value}>{config.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <Input
+                            value={selectedAnnotationDraft.title}
+                            onChange={(event) => setSelectedAnnotationDraft((current) => ({ ...current, title: event.target.value }))}
+                            placeholder="Review title"
+                            className="border-slate-300 bg-white"
+                          />
+                          <Textarea
+                            value={selectedAnnotationDraft.body}
+                            onChange={(event) => setSelectedAnnotationDraft((current) => ({ ...current, body: event.target.value }))}
+                            placeholder="What should reviewers focus on here?"
+                            className="min-h-[110px] border-slate-200 bg-white"
+                          />
+                          <div className="flex items-center justify-end">
+                            <Button onClick={() => void handleSaveSelectedAnnotation()} disabled={isSavingAnnotation}>
+                              {isSavingAnnotation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                              Save review card
+                            </Button>
+                          </div>
+
+                          <Separator />
+
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-950">Threaded discussion</p>
+                                <p className="text-sm text-slate-500">Replies stay attached to this document point for everyone in the session.</p>
+                              </div>
+                              <Badge variant="outline" className="border-slate-300 text-slate-600">{annotationComments.length} entries</Badge>
+                            </div>
+                            <form
+                              className="space-y-3"
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                void handleCreateComment({
+                                  body: annotationReplyDraft,
+                                  annotationId: selectedAnnotation.id,
+                                  parentId: annotationReplyParentId,
+                                  onSuccess: () => {
+                                    setAnnotationReplyDraft("");
+                                    setAnnotationReplyParentId(null);
+                                  },
+                                });
+                              }}
+                            >
+                              <Textarea
+                                value={annotationReplyDraft}
+                                onChange={(event) => setAnnotationReplyDraft(event.target.value)}
+                                placeholder={annotationReplyParentId ? "Reply to the selected thread..." : "Add a threaded comment for this review card..."}
+                                className="min-h-[96px] border-slate-200 bg-white"
+                              />
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs text-slate-500">{annotationReplyParentId ? "New reply will attach inside the selected thread." : "Top-level comment in the selected review thread."}</p>
+                                <div className="flex items-center gap-2">
+                                  {annotationReplyParentId ? <Button type="button" variant="ghost" className="text-slate-500" onClick={() => { setAnnotationReplyDraft(""); setAnnotationReplyParentId(null); }}>Clear reply target</Button> : null}
+                                  <Button type="submit" disabled={!annotationReplyDraft.trim()}>
+                                    <Send className="mr-2 h-4 w-4" />
+                                    Send
+                                  </Button>
+                                </div>
+                              </div>
+                            </form>
+                            <ScrollArea className="h-[320px] rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                              {annotationComments.length ? (
+                                <ThreadList
+                                  comments={annotationComments}
+                                  replyDraft={annotationReplyDraft}
+                                  replyParentId={annotationReplyParentId}
+                                  setReplyDraft={setAnnotationReplyDraft}
+                                  setReplyParentId={setAnnotationReplyParentId}
+                                  onSubmitReply={(parentId) => handleCreateComment({
+                                    body: annotationReplyDraft,
+                                    annotationId: selectedAnnotation.id,
+                                    parentId,
+                                    onSuccess: () => {
+                                      setAnnotationReplyDraft("");
+                                      setAnnotationReplyParentId(null);
+                                    },
+                                  })}
+                                  onDeleteComment={handleDeleteComment}
+                                />
+                              ) : (
+                                <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">No comments on this review card yet.</div>
+                              )}
+                            </ScrollArea>
+                          </div>
                         </div>
-                      ) : null}
+                      ) : (
+                        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                          Select a review card to edit its metadata and join the thread.
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -1302,35 +1884,72 @@ export default function PdfWorkspacePage() {
                 <TabsContent value="chat" className="mt-4 flex-1">
                   <Card className="flex h-full flex-col border-slate-200 shadow-none">
                     <CardHeader className="border-b border-slate-200 bg-slate-50 pb-4">
-                      <CardTitle className="text-slate-950">Review chat</CardTitle>
-                      <CardDescription>Lightweight room chat for notes while the call is running. Still prototype-local for now.</CardDescription>
+                      <CardTitle className="text-slate-950">Shared notes</CardTitle>
+                      <CardDescription>Session-level notes are no longer local-only. They sync live for everyone in the same review room.</CardDescription>
                     </CardHeader>
                     <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-5">
-                      <ScrollArea className="h-[360px] rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <div className="space-y-4 pr-3">
-                          {messages.map((message) => (
-                            <div key={message.id} className={cn("flex gap-3", message.role === "You" ? "justify-end" : "justify-start")}>
-                              {message.role === "Team" ? <Avatar className="h-8 w-8"><AvatarFallback>{message.author.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar> : null}
-                              <div className={cn("max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-6", message.role === "You" ? "bg-slate-950 text-white" : "border border-slate-200 bg-white text-slate-700")}>
-                                <div className="mb-1 flex items-center gap-2 text-xs font-medium opacity-75">
-                                  <span>{message.author}</span>
-                                  <span>{message.timestamp}</span>
-                                </div>
-                                <p>{message.text}</p>
-                              </div>
-                            </div>
-                          ))}
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="mt-0.5 h-4 w-4 text-sky-600" />
+                          <p>Use shared notes for room-level coordination, and use review threads when feedback should stay attached to a specific point on the PDF.</p>
                         </div>
-                      </ScrollArea>
-                      <Separator />
-                      <form className="space-y-3" onSubmit={handleSendMessage}>
-                        <Input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder="Send a quick note to the room…" />
-                        <div className="flex justify-end">
-                          <Button type="submit" disabled={!chatDraft.trim()}>
-                            <Send className="mr-2 h-4 w-4" />Send
-                          </Button>
+                      </div>
+                      <form
+                        className="space-y-3"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void handleCreateComment({
+                            body: sessionReplyParentId ? sessionReplyDraft : sessionNoteDraft,
+                            annotationId: null,
+                            parentId: sessionReplyParentId,
+                            onSuccess: () => {
+                              setSessionNoteDraft("");
+                              setSessionReplyDraft("");
+                              setSessionReplyParentId(null);
+                            },
+                          });
+                        }}
+                      >
+                        <Textarea
+                          value={sessionReplyParentId ? sessionReplyDraft : sessionNoteDraft}
+                          onChange={(event) => sessionReplyParentId ? setSessionReplyDraft(event.target.value) : setSessionNoteDraft(event.target.value)}
+                          placeholder={sessionReplyParentId ? "Reply to the selected note..." : "Add a synced note for everyone in this session..."}
+                          className="min-h-[100px] border-slate-200 bg-white"
+                        />
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs text-slate-500">{sessionReplyParentId ? "Your next note will post as a reply." : "Top-level notes show up for every collaborator in the room."}</p>
+                          <div className="flex items-center gap-2">
+                            {sessionReplyParentId ? <Button type="button" variant="ghost" className="text-slate-500" onClick={() => { setSessionReplyParentId(null); setSessionReplyDraft(""); }}>Clear reply target</Button> : null}
+                            <Button type="submit" disabled={!(sessionReplyParentId ? sessionReplyDraft : sessionNoteDraft).trim()}>
+                              <Send className="mr-2 h-4 w-4" />
+                              Post note
+                            </Button>
+                          </div>
                         </div>
                       </form>
+                      <ScrollArea className="h-[420px] rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        {sessionNotes.length ? (
+                          <ThreadList
+                            comments={sessionNotes}
+                            replyDraft={sessionReplyDraft}
+                            replyParentId={sessionReplyParentId}
+                            setReplyDraft={setSessionReplyDraft}
+                            setReplyParentId={setSessionReplyParentId}
+                            onSubmitReply={(parentId) => handleCreateComment({
+                              body: sessionReplyDraft,
+                              annotationId: null,
+                              parentId,
+                              onSuccess: () => {
+                                setSessionReplyDraft("");
+                                setSessionReplyParentId(null);
+                              },
+                            })}
+                            onDeleteComment={handleDeleteComment}
+                          />
+                        ) : (
+                          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">No shared notes yet. Start the session thread here.</div>
+                        )}
+                      </ScrollArea>
                     </CardContent>
                   </Card>
                 </TabsContent>
