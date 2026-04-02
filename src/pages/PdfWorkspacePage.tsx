@@ -109,7 +109,7 @@ type WorkspacePresence = {
   name: string;
   color: string;
   cursor: { xPercent: number; yPercent: number } | null;
-  activeTool: "navigate" | "annotate";
+  activeTool: "pointer" | "pin";
   isInCall: boolean;
   lastActiveAt: string;
   isSelf: boolean;
@@ -259,14 +259,14 @@ const formatRelativeActivity = (value: string) => {
 
 const buildPresenceSummary = (participant: WorkspacePresence) => {
   if (participant.cursor) {
-    return `Reviewing page area ${participant.cursor.xPercent.toFixed(1)}%, ${participant.cursor.yPercent.toFixed(1)}%`;
+    return `Pointer on document at ${participant.cursor.xPercent.toFixed(1)}%, ${participant.cursor.yPercent.toFixed(1)}%`;
   }
 
   if (participant.isInCall) {
-    return participant.activeTool === "annotate" ? "In call and ready to place a review card" : "In call and watching the document";
+    return participant.activeTool === "pin" ? "In call and ready to place a pin" : "In call and following the document";
   }
 
-  return participant.activeTool === "annotate" ? "Preparing a new review card" : "Watching document";
+  return participant.activeTool === "pin" ? "Ready to place a pin" : "Watching document";
 };
 
 const normalizeAnnotationRecord = (annotation: Record<string, string | number | null>): AnnotationRecord => ({
@@ -426,7 +426,7 @@ export default function PdfWorkspacePage() {
   const [annotations, setAnnotations] = useState<AnnotationRecord[]>([]);
   const [comments, setComments] = useState<CommentRecord[]>([]);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
-  const [interactionMode, setInteractionMode] = useState<"navigate" | "annotate">("navigate");
+  const [interactionMode, setInteractionMode] = useState<"pointer" | "pin">("pointer");
   const [annotationComposer, setAnnotationComposer] = useState<AnnotationComposerState>(defaultAnnotationComposer);
   const [selectedAnnotationDraft, setSelectedAnnotationDraft] = useState<AnnotationComposerState>(defaultAnnotationComposer);
   const [sessionNoteDraft, setSessionNoteDraft] = useState("");
@@ -492,7 +492,7 @@ export default function PdfWorkspacePage() {
     () => comments.filter((comment) => comment.annotationId === selectedAnnotationId),
     [comments, selectedAnnotationId],
   );
-  const sessionNotes = useMemo(
+  const sessionChat = useMemo(
     () => comments.filter((comment) => comment.annotationId === null),
     [comments],
   );
@@ -533,7 +533,7 @@ export default function PdfWorkspacePage() {
     return {
       activeOnDocument,
       liveInCall,
-      drafting: presenceParticipants.filter((participant) => participant.activeTool === "annotate").length,
+      drafting: presenceParticipants.filter((participant) => participant.activeTool === "pin").length,
     };
   }, [presenceParticipants]);
 
@@ -715,23 +715,48 @@ export default function PdfWorkspacePage() {
         name: string;
         color: string;
         cursor: { xPercent: number; yPercent: number } | null;
-        activeTool?: "navigate" | "annotate";
+        activeTool?: "pointer" | "pin";
         isInCall?: boolean;
         lastActiveAt?: string;
       }>();
 
-      const nextParticipants = Object.values(state)
+      const deduped = new Map<string, WorkspacePresence>();
+
+      Object.values(state)
         .flat()
-        .map((participant) => ({
-          id: participant.id,
-          name: participant.name,
-          color: participant.color,
-          cursor: participant.cursor,
-          activeTool: participant.activeTool ?? "navigate",
-          isInCall: Boolean(participant.isInCall),
-          lastActiveAt: participant.lastActiveAt ?? new Date().toISOString(),
-          isSelf: participant.id === localParticipantId.current,
-        }))
+        .forEach((participant) => {
+          const id = participant.id;
+          const nextParticipant: WorkspacePresence = {
+            id,
+            name: participant.name,
+            color: participant.color,
+            cursor: participant.cursor,
+            activeTool: participant.activeTool ?? "pointer",
+            isInCall: Boolean(participant.isInCall),
+            lastActiveAt: participant.lastActiveAt ?? new Date().toISOString(),
+            isSelf: id === localParticipantId.current,
+          };
+
+          const existing = deduped.get(id);
+          if (!existing || new Date(nextParticipant.lastActiveAt).getTime() >= new Date(existing.lastActiveAt).getTime()) {
+            deduped.set(id, nextParticipant);
+          }
+        });
+
+      if (!deduped.has(localParticipantId.current)) {
+        deduped.set(localParticipantId.current, {
+          id: localParticipantId.current,
+          name: participantName.trim() || "Reviewer",
+          color: localParticipantColor,
+          cursor: pendingCursorRef.current,
+          activeTool: interactionMode,
+          isInCall: isJoined,
+          lastActiveAt: new Date().toISOString(),
+          isSelf: true,
+        });
+      }
+
+      const nextParticipants = Array.from(deduped.values())
         .sort((left, right) => Number(right.isSelf) - Number(left.isSelf) || left.name.localeCompare(right.name));
 
       setPresenceParticipants(nextParticipants);
@@ -1110,7 +1135,7 @@ export default function PdfWorkspacePage() {
   };
 
   const handleWorkspacePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!documentRecord?.publicUrl || interactionMode === "annotate") {
+    if (!documentRecord?.publicUrl || interactionMode === "pin") {
       return;
     }
 
@@ -1129,7 +1154,7 @@ export default function PdfWorkspacePage() {
   };
 
   const handleAnnotationPlacement = async (event: ReactMouseEvent<HTMLElement>) => {
-    if (interactionMode !== "annotate" || !documentRecord?.publicUrl) {
+    if (interactionMode !== "pin" || !documentRecord?.publicUrl) {
       return;
     }
 
@@ -1169,7 +1194,7 @@ export default function PdfWorkspacePage() {
     const nextAnnotation = normalizeAnnotationRecord(data as unknown as Record<string, string | number | null>);
     setAnnotations((current) => (current.some((annotation) => annotation.id === nextAnnotation.id) ? current : [...current, nextAnnotation]));
     setSelectedAnnotationId(nextAnnotation.id);
-    setInteractionMode("navigate");
+    setInteractionMode("pointer");
     setAnnotationComposer(defaultAnnotationComposer());
   };
 
@@ -1196,7 +1221,7 @@ export default function PdfWorkspacePage() {
 
     if (error) {
       toast({
-        title: "Review card not saved",
+        title: "Pin not saved",
         description: error.message,
         variant: "destructive",
       });
@@ -1206,7 +1231,7 @@ export default function PdfWorkspacePage() {
     const nextAnnotation = normalizeAnnotationRecord(data as unknown as Record<string, string | number | null>);
     setAnnotations((current) => current.map((annotation) => (annotation.id === nextAnnotation.id ? nextAnnotation : annotation)));
     toast({
-      title: "Review card updated",
+      title: "Pin updated",
       description: "Status, priority, and notes now sync for the session.",
     });
   };
@@ -1320,9 +1345,9 @@ export default function PdfWorkspacePage() {
           <div className="flex flex-col gap-5 border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,#1e3a8a_0%,#0f172a_58%,#020617_100%)] px-6 py-5 text-white xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sky-300">Collaborative PDF review</p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Review the document, keep the call live, and work the thread like a real review room</h1>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Review the document together with visible cursors, live pins, and a working chat</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
-                Shared PDF, live cursors, Agora video, richer review cards, and synced session notes all stay on the same session key.
+                Shared PDF, cursors, pins, call status, and chat all stay synced in the same room.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -1351,12 +1376,12 @@ export default function PdfWorkspacePage() {
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <CardTitle className="text-slate-950">Document viewer</CardTitle>
-                    <CardDescription>Shared review markers, threaded responses, and collaborator presence stay pinned to the same PDF surface.</CardDescription>
+                    <CardDescription>Pins, comments, and collaborator cursors stay on the same PDF so everyone sees the same thing.</CardDescription>
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <div className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
                       <Sparkles className="mr-1.5 h-3.5 w-3.5 text-amber-500" />
-                      {annotations.length} review item{annotations.length === 1 ? "" : "s"}
+                      {annotations.length} pin{annotations.length === 1 ? "" : "s"}
                     </div>
                     {presenceParticipants.slice(0, 4).map((participant) => (
                       <div key={participant.id} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
@@ -1420,35 +1445,38 @@ export default function PdfWorkspacePage() {
                           <Badge variant="outline" className="border-slate-300 text-slate-600">
                             {otherParticipants.length} collaborator{otherParticipants.length === 1 ? "" : "s"} live
                           </Badge>
-                          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">EmbedPDF viewer</div>
+                          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">Shared PDF</div>
                         </div>
                       </div>
                       <div className="grid gap-3 xl:grid-cols-[auto,1fr]">
                         <div className="flex flex-wrap items-center gap-2">
                           <Button
                             type="button"
-                            variant={interactionMode === "navigate" ? "default" : "outline"}
-                            className={cn(interactionMode === "navigate" ? "" : "border-slate-300")}
-                            onClick={() => setInteractionMode("navigate")}
+                            variant={interactionMode === "pointer" ? "default" : "outline"}
+                            className={cn(interactionMode === "pointer" ? "" : "border-slate-300")}
+                            onClick={() => setInteractionMode("pointer")}
                           >
                             <MousePointer2 className="mr-2 h-4 w-4" />
-                            Navigate
+                            Pointer
                           </Button>
                           <Button
                             type="button"
-                            variant={interactionMode === "annotate" ? "default" : "outline"}
-                            className={cn(interactionMode === "annotate" ? "" : "border-slate-300")}
-                            onClick={() => setInteractionMode("annotate")}
+                            variant={interactionMode === "pin" ? "default" : "outline"}
+                            className={cn(interactionMode === "pin" ? "" : "border-slate-300")}
+                            onClick={() => setInteractionMode("pin")}
                           >
                             <PenLine className="mr-2 h-4 w-4" />
-                            Drop review card
+                            Pin
                           </Button>
+                          <Badge variant="outline" className={cn("border px-3 py-1 text-xs font-medium", isPresenceReady ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700")}>
+                            {isPresenceReady ? `${presenceParticipants.length} collaborator${presenceParticipants.length === 1 ? "" : "s"} connected` : "Connecting collaborators..."}
+                          </Badge>
                         </div>
                         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr),150px,150px,150px]">
                           <Input
                             value={annotationComposer.title}
                             onChange={(event) => setAnnotationComposer((current) => ({ ...current, title: event.target.value }))}
-                            placeholder="Review card title"
+                            placeholder="Pin title"
                           />
                           <Select value={annotationComposer.annotationType} onValueChange={(value: AnnotationType) => setAnnotationComposer((current) => ({ ...current, annotationType: value }))}>
                             <SelectTrigger className="border-slate-300 bg-white">
@@ -1485,12 +1513,23 @@ export default function PdfWorkspacePage() {
                       <Textarea
                         value={annotationComposer.body}
                         onChange={(event) => setAnnotationComposer((current) => ({ ...current, body: event.target.value }))}
-                        placeholder="Optional detail for the next review card"
+                        placeholder="Optional detail for the next pin"
                         className="min-h-[84px] border-slate-200 bg-slate-50"
                       />
                     </div>
                     <div className="relative h-[980px] w-full overflow-hidden bg-white" onPointerMove={handleWorkspacePointerMove} onPointerLeave={handleWorkspacePointerLeave}>
                       <div ref={viewerHostRef} className="h-full w-full bg-white" />
+                      <div className="absolute left-4 top-4 z-30 max-w-md rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+                          {interactionMode === "pointer" ? <MousePointer2 className="h-4 w-4 text-sky-600" /> : <PenLine className="h-4 w-4 text-amber-600" />}
+                          {interactionMode === "pointer" ? "Pointer mode" : "Pin mode"}
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-slate-600">
+                          {interactionMode === "pointer"
+                            ? "Move over the PDF to show your cursor to collaborators in real time."
+                            : "Click anywhere on the PDF to drop a shared pin with a comment thread."}
+                        </p>
+                      </div>
                       <div className="pointer-events-none absolute inset-0 z-10">
                         {annotations.map((annotation, index) => {
                           const typeConfig = annotationTypeConfig[annotation.annotationType];
@@ -1546,12 +1585,12 @@ export default function PdfWorkspacePage() {
                           ) : null,
                         )}
                       </div>
-                      {interactionMode === "annotate" ? (
+                      {interactionMode === "pin" ? (
                         <button
                           type="button"
                           className="absolute inset-0 z-20 cursor-crosshair bg-transparent"
                           onClick={handleAnnotationPlacement}
-                          aria-label="Place shared review card"
+                          aria-label="Place shared pin"
                         />
                       ) : null}
                     </div>
@@ -1638,14 +1677,14 @@ export default function PdfWorkspacePage() {
                 <CardHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_100%)] pb-4">
                   <CardTitle className="flex items-center text-slate-950">
                     <ShieldCheck className="mr-2 h-5 w-5 text-sky-600" />
-                    Presence roster
+                    Collaborators
                   </CardTitle>
                   <CardDescription>Who is in the session, who is moving on the document, and where review attention is concentrated.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 p-5">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Reviewers live</p>
+                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Collaborators</p>
                       <p className="mt-2 text-3xl font-semibold text-slate-950">{presenceParticipants.length}</p>
                     </div>
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -1655,7 +1694,7 @@ export default function PdfWorkspacePage() {
                   </div>
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">On document</p>
+                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Pointers visible</p>
                       <p className="mt-2 text-2xl font-semibold text-slate-950">{sessionActivitySummary.activeOnDocument}</p>
                     </div>
                     <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -1663,7 +1702,7 @@ export default function PdfWorkspacePage() {
                       <p className="mt-2 text-2xl font-semibold text-slate-950">{sessionActivitySummary.liveInCall}</p>
                     </div>
                     <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Drafting reviews</p>
+                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Ready to pin</p>
                       <p className="mt-2 text-2xl font-semibold text-slate-950">{sessionActivitySummary.drafting}</p>
                     </div>
                   </div>
@@ -1682,8 +1721,8 @@ export default function PdfWorkspacePage() {
                                 <p className="truncate text-sm font-semibold text-slate-950">{participant.name}</p>
                                 {participant.isSelf ? <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">You</Badge> : null}
                                 {participant.isInCall ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">In call</Badge> : null}
-                                <Badge variant="outline" className={participant.activeTool === "annotate" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-700"}>
-                                  {participant.activeTool === "annotate" ? "Reviewing" : "Browsing"}
+                                <Badge variant="outline" className={participant.activeTool === "pin" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-700"}>
+                                  {participant.activeTool === "pin" ? "Pin" : "Pointer"}
                                 </Badge>
                               </div>
                               <p className="text-xs text-slate-500">{buildPresenceSummary(participant)}</p>
@@ -1700,11 +1739,11 @@ export default function PdfWorkspacePage() {
                 </CardContent>
               </Card>
 
-              <Tabs defaultValue="session" className="flex min-h-0 flex-1 flex-col">
+              <Tabs defaultValue="chat" className="flex min-h-0 flex-1 flex-col">
                 <TabsList className="grid w-full grid-cols-3 bg-slate-100">
+                  <TabsTrigger value="chat"><MessageSquare className="mr-2 h-4 w-4" />Chat</TabsTrigger>
+                  <TabsTrigger value="markup"><PenLine className="mr-2 h-4 w-4" />Pins</TabsTrigger>
                   <TabsTrigger value="session"><FileBadge2 className="mr-2 h-4 w-4" />Session</TabsTrigger>
-                  <TabsTrigger value="markup"><PenLine className="mr-2 h-4 w-4" />Review</TabsTrigger>
-                  <TabsTrigger value="chat"><MessageSquare className="mr-2 h-4 w-4" />Notes</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="session" className="mt-4 flex-1">
@@ -1772,7 +1811,7 @@ export default function PdfWorkspacePage() {
                         </div>
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
                           <p className="font-medium text-slate-950">Presence sync</p>
-                          <p className="mt-2">Supabase Presence keeps reviewer cursors live in the active session, while sessions, review cards, and shared notes now all sync on the same <code>session_id</code>.</p>
+                          <p className="mt-2">Supabase Presence keeps reviewer cursors live in the active session, while sessions, pins, and shared notes now all sync on the same <code>session_id</code>.</p>
                         </div>
                       </div>
                       {sessionError ? (
@@ -1788,7 +1827,7 @@ export default function PdfWorkspacePage() {
                 <TabsContent value="markup" className="mt-4 flex-1">
                   <Card className="flex h-full flex-col border-slate-200 shadow-none">
                     <CardHeader className="border-b border-slate-200 bg-slate-50 pb-4">
-                      <CardTitle className="text-slate-950">Review queue</CardTitle>
+                      <CardTitle className="text-slate-950">Pins</CardTitle>
                       <CardDescription>Typed annotation cards, status, priority, and threaded discussion all sync for the room.</CardDescription>
                     </CardHeader>
                     <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-5">
@@ -1863,7 +1902,7 @@ export default function PdfWorkspacePage() {
                                 </div>
                               </div>
                             </button>
-                          )) : <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">{annotations.length ? "No review cards match the current filter." : "No shared review cards yet. Drop one on the PDF to start the queue."}</div>}
+                          )) : <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">{annotations.length ? "No pins match the current filter." : "No shared pins yet. Drop one on the PDF to start the queue."}</div>}
                         </div>
                       </ScrollArea>
 
@@ -1871,7 +1910,7 @@ export default function PdfWorkspacePage() {
                         <div className="flex min-h-0 flex-1 flex-col gap-4 rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-5">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <p className="text-lg font-semibold text-slate-950">{selectedAnnotation.title || "Selected review card"}</p>
+                              <p className="text-lg font-semibold text-slate-950">{selectedAnnotation.title || "Selected pin"}</p>
                               <p className="mt-1 text-sm text-slate-500">Created by {selectedAnnotation.authorName} · {formatTimelineTimestamp(selectedAnnotation.createdAt)}</p>
                             </div>
                             <Button variant="outline" size="sm" className="border-slate-300" onClick={() => void handleDeleteAnnotation(selectedAnnotation.id)}>
@@ -1928,7 +1967,7 @@ export default function PdfWorkspacePage() {
                           <div className="flex items-center justify-end">
                             <Button onClick={() => void handleSaveSelectedAnnotation()} disabled={isSavingAnnotation}>
                               {isSavingAnnotation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                              Save review card
+                              Save pin
                             </Button>
                           </div>
 
@@ -1960,7 +1999,7 @@ export default function PdfWorkspacePage() {
                               <Textarea
                                 value={annotationReplyDraft}
                                 onChange={(event) => setAnnotationReplyDraft(event.target.value)}
-                                placeholder={annotationReplyParentId ? "Reply to the selected thread..." : "Add a threaded comment for this review card..."}
+                                placeholder={annotationReplyParentId ? "Reply to the selected thread..." : "Add a threaded comment for this pin..."}
                                 className="min-h-[96px] border-slate-200 bg-white"
                               />
                               <div className="flex items-center justify-between gap-2">
@@ -1994,14 +2033,14 @@ export default function PdfWorkspacePage() {
                                   onDeleteComment={handleDeleteComment}
                                 />
                               ) : (
-                                <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">No comments on this review card yet.</div>
+                                <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">No comments on this pin yet.</div>
                               )}
                             </ScrollArea>
                           </div>
                         </div>
                       ) : (
                         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                          Select a review card to edit its metadata and join the thread.
+                          Select a pin to edit its metadata and join the thread.
                         </div>
                       )}
                     </CardContent>
@@ -2011,14 +2050,14 @@ export default function PdfWorkspacePage() {
                 <TabsContent value="chat" className="mt-4 flex-1">
                   <Card className="flex h-full flex-col border-slate-200 shadow-none">
                     <CardHeader className="border-b border-slate-200 bg-slate-50 pb-4">
-                      <CardTitle className="text-slate-950">Shared notes</CardTitle>
-                      <CardDescription>Session-level notes are no longer local-only. They sync live for everyone in the same review room.</CardDescription>
+                      <CardTitle className="text-slate-950">Chat</CardTitle>
+                      <CardDescription>Room chat syncs live for everyone in this session.</CardDescription>
                     </CardHeader>
                     <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-5">
                       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
                         <div className="flex items-start gap-3">
                           <AlertCircle className="mt-0.5 h-4 w-4 text-sky-600" />
-                          <p>Use shared notes for room-level coordination, and use review threads when feedback should stay attached to a specific point on the PDF.</p>
+                          <p>Use chat for room conversation. Use pin threads when feedback should stay attached to a spot on the PDF.</p>
                         </div>
                       </div>
                       <form
@@ -2040,24 +2079,24 @@ export default function PdfWorkspacePage() {
                         <Textarea
                           value={sessionReplyParentId ? sessionReplyDraft : sessionNoteDraft}
                           onChange={(event) => sessionReplyParentId ? setSessionReplyDraft(event.target.value) : setSessionNoteDraft(event.target.value)}
-                          placeholder={sessionReplyParentId ? "Reply to the selected note..." : "Add a synced note for everyone in this session..."}
+                          placeholder={sessionReplyParentId ? "Reply in chat..." : "Send a message to everyone in this session..."}
                           className="min-h-[100px] border-slate-200 bg-white"
                         />
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-xs text-slate-500">{sessionReplyParentId ? "Your next note will post as a reply." : "Top-level notes show up for every collaborator in the room."}</p>
+                          <p className="text-xs text-slate-500">{sessionReplyParentId ? "Your next message will post as a reply." : "Messages show up for every collaborator in the room."}</p>
                           <div className="flex items-center gap-2">
                             {sessionReplyParentId ? <Button type="button" variant="ghost" className="text-slate-500" onClick={() => { setSessionReplyParentId(null); setSessionReplyDraft(""); }}>Clear reply target</Button> : null}
                             <Button type="submit" disabled={!(sessionReplyParentId ? sessionReplyDraft : sessionNoteDraft).trim()}>
                               <Send className="mr-2 h-4 w-4" />
-                              Post note
+                              Send message
                             </Button>
                           </div>
                         </div>
                       </form>
                       <ScrollArea className="h-[420px] rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        {sessionNotes.length ? (
+                        {sessionChat.length ? (
                           <ThreadList
-                            comments={sessionNotes}
+                            comments={sessionChat}
                             replyDraft={sessionReplyDraft}
                             replyParentId={sessionReplyParentId}
                             setReplyDraft={setSessionReplyDraft}
@@ -2074,7 +2113,7 @@ export default function PdfWorkspacePage() {
                             onDeleteComment={handleDeleteComment}
                           />
                         ) : (
-                          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">No shared notes yet. Start the session thread here.</div>
+                          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">No chat messages yet. Start the room conversation here.</div>
                         )}
                       </ScrollArea>
                     </CardContent>
