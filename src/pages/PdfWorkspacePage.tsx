@@ -1,4 +1,4 @@
-import { ChangeEvent, DragEvent, FormEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import EmbedPDF from "@embedpdf/snippet";
 import {
@@ -61,9 +61,12 @@ const STORAGE_BUCKET = "pdf-collab";
 const PARTICIPANT_PROFILE_ID_STORAGE_KEY = "pdf-collab-participant-profile-id";
 const PARTICIPANT_INSTANCE_ID_STORAGE_KEY = "pdf-collab-participant-instance-id";
 const PARTICIPANT_NAME_STORAGE_KEY = "pdf-collab-participant-name";
-const CURSOR_BROADCAST_INTERVAL_MS = 80;
-const REALTIME_RETRY_DELAY_MS = 2000;
-const PARTICIPANT_COLORS = ["#0f766e", "#2563eb", "#c2410c", "#7c3aed", "#be123c", "#059669"];
+const CURSOR_BROADCAST_INTERVAL_MS = 120;
+const COLLABORATION_POLL_INTERVAL_MS = 900;
+const PARTICIPANT_POLL_INTERVAL_MS = 450;
+const PARTICIPANT_HEARTBEAT_INTERVAL_MS = 2000;
+const PARTICIPANT_STALE_AFTER_MS = 8000;
+const PARTICIPANT_COLORS = ["#0f766e", "#2563eb", "#c2410c", "#7c3aed", "#be123c", "#059669", "#0891b2", "#ca8a04", "#4338ca", "#ea580c"];
 
 const statusStyles = {
   idle: "border-slate-200 bg-slate-50 text-slate-700",
@@ -115,6 +118,20 @@ type WorkspacePresence = {
   isInCall: boolean;
   lastActiveAt: string;
   isSelf: boolean;
+};
+
+type ParticipantRow = {
+  instance_id: string;
+  session_id: string;
+  profile_id: string;
+  name: string;
+  color: string;
+  active_tool: "pointer" | "pin" | null;
+  cursor_x_percent: number | null;
+  cursor_y_percent: number | null;
+  is_in_call: boolean | null;
+  joined_at: string;
+  last_heartbeat_at: string;
 };
 
 type AnnotationRecord = {
@@ -274,6 +291,28 @@ const formatRelativeActivity = (value: string) => {
   return `${elapsedHours}h ago`;
 };
 
+const buildPresenceParticipants = (records: ParticipantRow[], selfId: string): WorkspacePresence[] =>
+  records
+    .slice()
+    .sort((left, right) => left.joined_at.localeCompare(right.joined_at) || left.instance_id.localeCompare(right.instance_id))
+    .map((participant) => ({
+      id: participant.instance_id,
+      name: participant.name,
+      color: participant.color,
+      cursor:
+        participant.cursor_x_percent === null || participant.cursor_y_percent === null
+          ? null
+          : {
+              xPercent: Number(participant.cursor_x_percent),
+              yPercent: Number(participant.cursor_y_percent),
+            },
+      activeTool: (participant.active_tool === "pin" ? "pin" : "pointer") as WorkspacePresence["activeTool"],
+      isInCall: Boolean(participant.is_in_call),
+      lastActiveAt: participant.last_heartbeat_at,
+      isSelf: participant.instance_id === selfId,
+    }))
+    .sort((left, right) => Number(right.isSelf) - Number(left.isSelf) || left.name.localeCompare(right.name));
+
 const buildPresenceSummary = (participant: WorkspacePresence) => {
   if (participant.cursor) {
     return `Pointer on document at ${participant.cursor.xPercent.toFixed(1)}%, ${participant.cursor.yPercent.toFixed(1)}%`;
@@ -427,13 +466,15 @@ export default function PdfWorkspacePage() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const viewerHostRef = useRef<HTMLDivElement | null>(null);
-  const presenceChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const cursorSentAtRef = useRef(0);
   const cursorTimeoutRef = useRef<number | null>(null);
-  const realtimeRetryTimeoutRef = useRef<number | null>(null);
   const pendingCursorRef = useRef<{ xPercent: number; yPercent: number } | null>(null);
   const localParticipantProfileId = useRef(getStoredParticipantProfileId());
   const localParticipantInstanceId = useRef(getParticipantInstanceId());
+  const participantNameRef = useRef(getStoredParticipantName());
+  const interactionModeRef = useRef<"pointer" | "pin">("pointer");
+  const isJoinedRef = useRef(false);
+  const latestPresenceRef = useRef<WorkspacePresence[]>([]);
 
   const [isDragging, setIsDragging] = useState(false);
   const [sessionIdInput, setSessionIdInput] = useState(resolvedSession.sessionId);
@@ -454,14 +495,12 @@ export default function PdfWorkspacePage() {
   const [sessionReplyDraft, setSessionReplyDraft] = useState("");
   const [sessionReplyParentId, setSessionReplyParentId] = useState<string | null>(null);
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>("all");
-  const [isPresenceReady, setIsPresenceReady] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingAnnotation, setIsSavingAnnotation] = useState(false);
   const [sessionError, setSessionError] = useState("");
-  const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "connected" | "retrying" | "failed">("connecting");
-  const [realtimeError, setRealtimeError] = useState("");
-  const [realtimeReconnectNonce, setRealtimeReconnectNonce] = useState(0);
+  const [collaborationStatus, setCollaborationStatus] = useState<"connecting" | "connected" | "retrying" | "failed">("connecting");
+  const [collaborationError, setCollaborationError] = useState("");
   const { toast } = useToast();
 
   const {
@@ -490,7 +529,10 @@ export default function PdfWorkspacePage() {
     leftMessage: "Call ended. The shared PDF session is still live, and you can rejoin whenever you need.",
   });
 
-  const localParticipantColor = useMemo(() => getParticipantColor(localParticipantProfileId.current), []);
+  const localParticipantColor = useMemo(
+    () => presenceParticipants.find((participant) => participant.id === localParticipantInstanceId.current)?.color ?? getParticipantColor(localParticipantProfileId.current),
+    [presenceParticipants],
+  );
   const selectedAnnotation = useMemo(
     () => annotations.find((annotation) => annotation.id === selectedAnnotationId) ?? null,
     [annotations, selectedAnnotationId],
@@ -559,19 +601,30 @@ export default function PdfWorkspacePage() {
     };
   }, [presenceParticipants]);
 
-  const scheduleRealtimeReconnect = (reason: string) => {
-    setRealtimeStatus("retrying");
-    setRealtimeError(reason);
-    setIsPresenceReady(false);
+  const upsertAnnotationState = (record: AnnotationRecord) => {
+    setAnnotations((current) => {
+      const existingIndex = current.findIndex((annotation) => annotation.id === record.id);
+      if (existingIndex === -1) {
+        return [...current, record].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+      }
 
-    if (realtimeRetryTimeoutRef.current) {
-      return;
-    }
+      const next = [...current];
+      next[existingIndex] = record;
+      return next;
+    });
+  };
 
-    realtimeRetryTimeoutRef.current = window.setTimeout(() => {
-      realtimeRetryTimeoutRef.current = null;
-      setRealtimeReconnectNonce((current) => current + 1);
-    }, REALTIME_RETRY_DELAY_MS);
+  const upsertCommentState = (record: CommentRecord) => {
+    setComments((current) => {
+      const existingIndex = current.findIndex((comment) => comment.id === record.id);
+      if (existingIndex === -1) {
+        return [...current, record].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+      }
+
+      const next = [...current];
+      next[existingIndex] = record;
+      return next;
+    });
   };
 
   useEffect(() => {
@@ -593,14 +646,27 @@ export default function PdfWorkspacePage() {
 
   useEffect(() => {
     window.localStorage.setItem(PARTICIPANT_NAME_STORAGE_KEY, participantName.trim() || "Reviewer");
+    participantNameRef.current = participantName.trim() || "Reviewer";
   }, [participantName]);
 
   useEffect(() => {
+    interactionModeRef.current = interactionMode;
+  }, [interactionMode]);
+
+  useEffect(() => {
+    isJoinedRef.current = isJoined;
+  }, [isJoined]);
+
+  useEffect(() => {
     let isActive = true;
+    let isFetching = false;
 
     const loadSession = async () => {
-      setIsLoadingSession(true);
-      setSessionError("");
+      if (isFetching) {
+        return;
+      }
+
+      isFetching = true;
 
       const { data, error } = await supabase
         .from("pdf_collab_sessions")
@@ -614,10 +680,11 @@ export default function PdfWorkspacePage() {
 
       if (error) {
         setSessionError(error.message);
-        setIsLoadingSession(false);
+        isFetching = false;
         return;
       }
 
+      setSessionError("");
       if (data) {
         const nextRecord: SessionDocument = {
           sessionId: data.session_id,
@@ -647,12 +714,18 @@ export default function PdfWorkspacePage() {
       }
 
       setIsLoadingSession(false);
+      isFetching = false;
     };
 
+    setIsLoadingSession(true);
     void loadSession();
+    const intervalId = window.setInterval(() => {
+      void loadSession();
+    }, COLLABORATION_POLL_INTERVAL_MS);
 
     return () => {
       isActive = false;
+      window.clearInterval(intervalId);
     };
   }, [resolvedSession.sessionId, resolvedSession.sessionName]);
 
@@ -667,8 +740,14 @@ export default function PdfWorkspacePage() {
     setSessionReplyParentId(null);
 
     let isMounted = true;
+    let isFetching = false;
 
     const loadReviewState = async () => {
+      if (isFetching) {
+        return;
+      }
+
+      isFetching = true;
       const [{ data: annotationData, error: annotationError }, { data: commentData, error: commentError }] = await Promise.all([
         supabase
           .from("pdf_collab_annotations")
@@ -683,6 +762,7 @@ export default function PdfWorkspacePage() {
       ]);
 
       if (!isMounted) {
+        isFetching = false;
         return;
       }
 
@@ -693,12 +773,18 @@ export default function PdfWorkspacePage() {
       if (!commentError) {
         setComments((commentData || []).map((comment) => normalizeCommentRecord(comment as unknown as Record<string, string | null>)));
       }
+
+      isFetching = false;
     };
 
     void loadReviewState();
+    const intervalId = window.setInterval(() => {
+      void loadReviewState();
+    }, COLLABORATION_POLL_INTERVAL_MS);
 
     return () => {
       isMounted = false;
+      window.clearInterval(intervalId);
     };
   }, [resolvedSession.sessionId]);
 
@@ -741,215 +827,96 @@ export default function PdfWorkspacePage() {
   }, [viewerUrl]);
 
   useEffect(() => {
-    const syncPresenceState = () => {
-      const channel = presenceChannelRef.current;
-      if (!channel) {
+    let isActive = true;
+    let isPolling = false;
+    let isHeartbeatInFlight = false;
+
+    const writeParticipantState = async (cursor: { xPercent: number; yPercent: number } | null) => {
+      if (isHeartbeatInFlight) {
         return;
       }
 
-      const state = channel.presenceState<{
-        id: string;
-        presenceKey?: string;
-        name: string;
-        color: string;
-        cursor: { xPercent: number; yPercent: number } | null;
-        activeTool?: "pointer" | "pin";
-        isInCall?: boolean;
-        lastActiveAt?: string;
-      }>();
+      isHeartbeatInFlight = true;
+      const { error } = await supabase.from("pdf_collab_participants").upsert(
+        {
+          instance_id: localParticipantInstanceId.current,
+          session_id: resolvedSession.sessionId,
+          profile_id: localParticipantProfileId.current,
+          name: participantNameRef.current,
+          active_tool: interactionModeRef.current,
+          is_in_call: isJoinedRef.current,
+          cursor_x_percent: cursor?.xPercent ?? null,
+          cursor_y_percent: cursor?.yPercent ?? null,
+          last_heartbeat_at: new Date().toISOString(),
+        },
+        { onConflict: "instance_id" },
+      );
 
-      const deduped = new Map<string, WorkspacePresence>();
+      isHeartbeatInFlight = false;
 
-      Object.values(state)
-        .flat()
-        .forEach((participant) => {
-          const id = participant.presenceKey ?? participant.id;
-          const nextParticipant: WorkspacePresence = {
-            id,
-            name: participant.name,
-            color: participant.color,
-            cursor: participant.cursor,
-            activeTool: participant.activeTool ?? "pointer",
-            isInCall: Boolean(participant.isInCall),
-            lastActiveAt: participant.lastActiveAt ?? new Date().toISOString(),
-            isSelf: id === localParticipantInstanceId.current,
-          };
-
-          const existing = deduped.get(id);
-          if (!existing || new Date(nextParticipant.lastActiveAt).getTime() >= new Date(existing.lastActiveAt).getTime()) {
-            deduped.set(id, nextParticipant);
-          }
-        });
-
-      if (!deduped.has(localParticipantInstanceId.current)) {
-        deduped.set(localParticipantInstanceId.current, {
-          id: localParticipantInstanceId.current,
-          name: participantName.trim() || "Reviewer",
-          color: localParticipantColor,
-          cursor: pendingCursorRef.current,
-          activeTool: interactionMode,
-          isInCall: isJoined,
-          lastActiveAt: new Date().toISOString(),
-          isSelf: true,
-        });
+      if (!isActive) {
+        return;
       }
 
-      const nextParticipants = Array.from(deduped.values())
-        .sort((left, right) => Number(right.isSelf) - Number(left.isSelf) || left.name.localeCompare(right.name));
+      if (error) {
+        setCollaborationStatus("retrying");
+        setCollaborationError(error.message);
+      } else {
+        setCollaborationStatus("connected");
+        setCollaborationError("");
+      }
+    };
 
+    const pollParticipants = async () => {
+      if (isPolling) {
+        return;
+      }
+
+      isPolling = true;
+      const cutoff = new Date(Date.now() - PARTICIPANT_STALE_AFTER_MS).toISOString();
+      const { data, error } = await supabase
+        .from("pdf_collab_participants")
+        .select("instance_id, session_id, profile_id, name, active_tool, is_in_call, cursor_x_percent, cursor_y_percent, last_heartbeat_at, joined_at")
+        .eq("session_id", resolvedSession.sessionId)
+        .gte("last_heartbeat_at", cutoff)
+        .order("joined_at", { ascending: true });
+
+      isPolling = false;
+
+      if (!isActive) {
+        return;
+      }
+
+      if (error) {
+        setCollaborationStatus("retrying");
+        setCollaborationError(error.message);
+        return;
+      }
+
+      const nextParticipants = buildPresenceParticipants(
+        (data || []) as ParticipantRow[],
+        localParticipantInstanceId.current,
+      );
+
+      latestPresenceRef.current = nextParticipants;
       setPresenceParticipants(nextParticipants);
+      setCollaborationStatus("connected");
+      setCollaborationError("");
     };
 
-    const channel = supabase.channel(`pdf-collab:${resolvedSession.sessionId}`, {
-      config: {
-        presence: {
-          key: localParticipantInstanceId.current,
-        },
-      },
-    });
+    setPresenceParticipants([]);
+    setCollaborationStatus("connecting");
+    setCollaborationError("");
 
-    const upsertAnnotation = (record: AnnotationRecord) => {
-      setAnnotations((current) => {
-        const existingIndex = current.findIndex((annotation) => annotation.id === record.id);
-        if (existingIndex === -1) {
-          return [...current, record].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-        }
+    void writeParticipantState(pendingCursorRef.current);
+    void pollParticipants();
 
-        const next = [...current];
-        next[existingIndex] = record;
-        return next;
-      });
-    };
-
-    const upsertComment = (record: CommentRecord) => {
-      setComments((current) => {
-        const existingIndex = current.findIndex((comment) => comment.id === record.id);
-        if (existingIndex === -1) {
-          return [...current, record].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-        }
-
-        const next = [...current];
-        next[existingIndex] = record;
-        return next;
-      });
-    };
-
-    presenceChannelRef.current = channel;
-    setIsPresenceReady(false);
-    setRealtimeStatus("connecting");
-    setRealtimeError("");
-
-    channel
-      .on("presence", { event: "sync" }, syncPresenceState)
-      .on("presence", { event: "join" }, syncPresenceState)
-      .on("presence", { event: "leave" }, syncPresenceState)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "pdf_collab_sessions",
-          filter: `session_id=eq.${resolvedSession.sessionId}`,
-        },
-        (payload) => {
-          const nextRecord = payload.new as Record<string, string | number | null>;
-          if (!nextRecord?.session_id) {
-            return;
-          }
-
-          setDocumentRecord({
-            sessionId: String(nextRecord.session_id),
-            sessionName: String(nextRecord.session_name),
-            storagePath: (nextRecord.storage_path as string | null) ?? null,
-            publicUrl: (nextRecord.public_url as string | null) ?? null,
-            originalFilename: (nextRecord.original_filename as string | null) ?? null,
-            fileSize: (nextRecord.file_size as number | null) ?? null,
-            uploadedAt: (nextRecord.uploaded_at as string | null) ?? null,
-          });
-          setViewerUrl((nextRecord.public_url as string | null) ?? null);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "pdf_collab_annotations",
-          filter: `session_id=eq.${resolvedSession.sessionId}`,
-        },
-        (payload) => {
-          if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
-            upsertAnnotation(normalizeAnnotationRecord(payload.new as Record<string, string | number | null>));
-            return;
-          }
-
-          if (payload.eventType === "DELETE") {
-            const previous = payload.old as Record<string, string | null>;
-            setAnnotations((current) => current.filter((annotation) => annotation.id !== previous.id));
-            setSelectedAnnotationId((current) => (current === previous.id ? null : current));
-          }
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "pdf_collab_comments",
-          filter: `session_id=eq.${resolvedSession.sessionId}`,
-        },
-        (payload) => {
-          if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
-            upsertComment(normalizeCommentRecord(payload.new as Record<string, string | null>));
-            return;
-          }
-
-          if (payload.eventType === "DELETE") {
-            const previous = payload.old as Record<string, string | null>;
-            setComments((current) => removeCommentBranch(current, String(previous.id)));
-          }
-        },
-      )
-      .subscribe(async (subscriptionStatus) => {
-        if (subscriptionStatus === "SUBSCRIBED") {
-          setRealtimeStatus("connected");
-          setRealtimeError("");
-          setIsPresenceReady(true);
-
-          try {
-            await channel.track({
-              id: localParticipantProfileId.current,
-              presenceKey: localParticipantInstanceId.current,
-              name: participantName.trim() || "Reviewer",
-              color: localParticipantColor,
-              cursor: pendingCursorRef.current,
-              activeTool: interactionMode,
-              isInCall: isJoined,
-              lastActiveAt: new Date().toISOString(),
-            });
-            syncPresenceState();
-          } catch (error) {
-            scheduleRealtimeReconnect(error instanceof Error ? error.message : "Realtime presence tracking failed.");
-          }
-          return;
-        }
-
-        if (subscriptionStatus === "CHANNEL_ERROR") {
-          scheduleRealtimeReconnect(`Realtime channel failed for session ${resolvedSession.sessionId}.`);
-          return;
-        }
-
-        if (subscriptionStatus === "TIMED_OUT") {
-          scheduleRealtimeReconnect(`Realtime subscription timed out for session ${resolvedSession.sessionId}.`);
-          return;
-        }
-
-        if (subscriptionStatus === "CLOSED") {
-          setIsPresenceReady(false);
-          setRealtimeStatus("failed");
-          setRealtimeError(`Realtime channel closed for session ${resolvedSession.sessionId}.`);
-        }
-      });
+    const heartbeatIntervalId = window.setInterval(() => {
+      void writeParticipantState(pendingCursorRef.current);
+    }, PARTICIPANT_HEARTBEAT_INTERVAL_MS);
+    const participantPollIntervalId = window.setInterval(() => {
+      void pollParticipants();
+    }, PARTICIPANT_POLL_INTERVAL_MS);
 
     return () => {
       if (cursorTimeoutRef.current) {
@@ -957,39 +924,40 @@ export default function PdfWorkspacePage() {
         cursorTimeoutRef.current = null;
       }
 
-      if (realtimeRetryTimeoutRef.current) {
-        window.clearTimeout(realtimeRetryTimeoutRef.current);
-        realtimeRetryTimeoutRef.current = null;
-      }
-
+      window.clearInterval(heartbeatIntervalId);
+      window.clearInterval(participantPollIntervalId);
+      void supabase.from("pdf_collab_participants").delete().eq("instance_id", localParticipantInstanceId.current);
       setPresenceParticipants([]);
-      setIsPresenceReady(false);
-      presenceChannelRef.current = null;
-      void supabase.removeChannel(channel);
+      latestPresenceRef.current = [];
+      isActive = false;
     };
-  }, [realtimeReconnectNonce, resolvedSession.sessionId]);
+  }, [resolvedSession.sessionId]);
 
   useEffect(() => {
-    const channel = presenceChannelRef.current;
-    if (!channel || !isPresenceReady) {
-      return;
-    }
+    void supabase.from("pdf_collab_participants").upsert(
+      {
+        instance_id: localParticipantInstanceId.current,
+        session_id: resolvedSession.sessionId,
+        profile_id: localParticipantProfileId.current,
+        name: participantNameRef.current,
+        active_tool: interactionMode,
+        is_in_call: isJoined,
+        cursor_x_percent: pendingCursorRef.current?.xPercent ?? null,
+        cursor_y_percent: pendingCursorRef.current?.yPercent ?? null,
+        last_heartbeat_at: new Date().toISOString(),
+      },
+      { onConflict: "instance_id" },
+    ).then(({ error }) => {
+      if (error) {
+        setCollaborationStatus("retrying");
+        setCollaborationError(error.message);
+        return;
+      }
 
-    void channel
-      .track({
-        id: localParticipantProfileId.current,
-        presenceKey: localParticipantInstanceId.current,
-        name: participantName.trim() || "Reviewer",
-        color: localParticipantColor,
-        cursor: pendingCursorRef.current,
-        activeTool: interactionMode,
-        isInCall: isJoined,
-        lastActiveAt: new Date().toISOString(),
-      })
-      .catch((error) => {
-        scheduleRealtimeReconnect(error instanceof Error ? error.message : "Realtime presence update failed.");
-      });
-  }, [interactionMode, isJoined, isPresenceReady, localParticipantColor, participantName]);
+      setCollaborationStatus("connected");
+      setCollaborationError("");
+    });
+  }, [interactionMode, isJoined, participantName, resolvedSession.sessionId]);
 
   const persistSession = async (
     nextSessionId: string,
@@ -1156,21 +1124,45 @@ export default function PdfWorkspacePage() {
   };
 
   const trackCursor = async (cursor: { xPercent: number; yPercent: number } | null) => {
-    const channel = presenceChannelRef.current;
-    if (!channel || !isPresenceReady) {
+    const { error } = await supabase.from("pdf_collab_participants").upsert(
+      {
+        instance_id: localParticipantInstanceId.current,
+        session_id: resolvedSession.sessionId,
+        profile_id: localParticipantProfileId.current,
+        name: participantNameRef.current,
+        active_tool: interactionModeRef.current,
+        is_in_call: isJoinedRef.current,
+        cursor_x_percent: cursor?.xPercent ?? null,
+        cursor_y_percent: cursor?.yPercent ?? null,
+        last_heartbeat_at: new Date().toISOString(),
+      },
+      { onConflict: "instance_id" },
+    );
+
+    if (error) {
+      setCollaborationStatus("retrying");
+      setCollaborationError(error.message);
       return;
     }
 
-    await channel.track({
-      id: localParticipantProfileId.current,
-      presenceKey: localParticipantInstanceId.current,
-      name: participantName.trim() || "Reviewer",
-      color: localParticipantColor,
-      cursor,
-      activeTool: interactionMode,
-      isInCall: isJoined,
-      lastActiveAt: new Date().toISOString(),
-    });
+    const nextParticipants = [
+      {
+        id: localParticipantInstanceId.current,
+        name: participantNameRef.current,
+        color: localParticipantColor,
+        cursor,
+        activeTool: interactionModeRef.current,
+        isInCall: isJoinedRef.current,
+        lastActiveAt: new Date().toISOString(),
+        isSelf: true,
+      },
+      ...latestPresenceRef.current.filter((participant) => participant.id !== localParticipantInstanceId.current),
+    ].sort((left, right) => Number(right.isSelf) - Number(left.isSelf) || left.name.localeCompare(right.name));
+
+    latestPresenceRef.current = nextParticipants;
+    setPresenceParticipants(nextParticipants);
+    setCollaborationStatus("connected");
+    setCollaborationError("");
   };
 
   const flushPendingCursor = () => {
@@ -1269,7 +1261,7 @@ export default function PdfWorkspacePage() {
     }
 
     const nextAnnotation = normalizeAnnotationRecord(data as unknown as Record<string, string | number | null>);
-    setAnnotations((current) => (current.some((annotation) => annotation.id === nextAnnotation.id) ? current : [...current, nextAnnotation]));
+    upsertAnnotationState(nextAnnotation);
     setSelectedAnnotationId(nextAnnotation.id);
     setInteractionMode("pointer");
     setAnnotationComposer(defaultAnnotationComposer());
@@ -1306,7 +1298,7 @@ export default function PdfWorkspacePage() {
     }
 
     const nextAnnotation = normalizeAnnotationRecord(data as unknown as Record<string, string | number | null>);
-    setAnnotations((current) => current.map((annotation) => (annotation.id === nextAnnotation.id ? nextAnnotation : annotation)));
+    upsertAnnotationState(nextAnnotation);
     toast({
       title: "Pin updated",
       description: "Status, priority, and notes now sync for the session.",
@@ -1337,15 +1329,19 @@ export default function PdfWorkspacePage() {
 
     await ensureCurrentSessionRecord();
 
-    const { error } = await supabase.from("pdf_collab_comments").insert({
-      session_id: resolvedSession.sessionId,
-      annotation_id: options.annotationId ?? null,
-      parent_id: options.parentId ?? null,
-      author_id: localParticipantProfileId.current,
-      author_name: participantName.trim() || "Reviewer",
-      color: localParticipantColor,
-      body,
-    });
+    const { data, error } = await supabase
+      .from("pdf_collab_comments")
+      .insert({
+        session_id: resolvedSession.sessionId,
+        annotation_id: options.annotationId ?? null,
+        parent_id: options.parentId ?? null,
+        author_id: localParticipantProfileId.current,
+        author_name: participantName.trim() || "Reviewer",
+        color: localParticipantColor,
+        body,
+      })
+      .select("id, session_id, annotation_id, parent_id, author_id, author_name, color, body, created_at, updated_at")
+      .single();
 
     if (error) {
       toast({
@@ -1356,6 +1352,7 @@ export default function PdfWorkspacePage() {
       return;
     }
 
+    upsertCommentState(normalizeCommentRecord(data as unknown as Record<string, string | null>));
     options.onSuccess?.();
   };
 
@@ -1391,12 +1388,30 @@ export default function PdfWorkspacePage() {
   };
 
   const handleReconnectRealtime = () => {
-    if (realtimeRetryTimeoutRef.current) {
-      window.clearTimeout(realtimeRetryTimeoutRef.current);
-      realtimeRetryTimeoutRef.current = null;
-    }
+    setCollaborationStatus("connecting");
+    void supabase.from("pdf_collab_participants").upsert(
+      {
+        instance_id: localParticipantInstanceId.current,
+        session_id: resolvedSession.sessionId,
+        profile_id: localParticipantProfileId.current,
+        name: participantNameRef.current,
+        active_tool: interactionModeRef.current,
+        is_in_call: isJoinedRef.current,
+        cursor_x_percent: pendingCursorRef.current?.xPercent ?? null,
+        cursor_y_percent: pendingCursorRef.current?.yPercent ?? null,
+        last_heartbeat_at: new Date().toISOString(),
+      },
+      { onConflict: "instance_id" },
+    ).then(({ error }) => {
+      if (error) {
+        setCollaborationStatus("failed");
+        setCollaborationError(error.message);
+        return;
+      }
 
-    setRealtimeReconnectNonce((current) => current + 1);
+      setCollaborationStatus("connected");
+      setCollaborationError("");
+    });
   };
 
   const handleNewSession = () => {
@@ -1554,8 +1569,8 @@ export default function PdfWorkspacePage() {
                             <PenLine className="mr-2 h-4 w-4" />
                             Pin
                           </Button>
-                          <Badge variant="outline" className={cn("border px-3 py-1 text-xs font-medium", isPresenceReady ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700")}>
-                            {isPresenceReady ? `${presenceParticipants.length} collaborator${presenceParticipants.length === 1 ? "" : "s"} connected` : "Connecting collaborators..."}
+                          <Badge variant="outline" className={cn("border px-3 py-1 text-xs font-medium", collaborationStatus === "connected" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700")}>
+                            {collaborationStatus === "connected" ? `${presenceParticipants.length} collaborator${presenceParticipants.length === 1 ? "" : "s"} connected` : "Syncing collaborators..."}
                           </Badge>
                         </div>
                         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr),150px,150px,150px]">
@@ -1602,17 +1617,17 @@ export default function PdfWorkspacePage() {
                         placeholder="Optional detail for the next pin"
                         className="min-h-[84px] border-slate-200 bg-slate-50"
                       />
-                      {realtimeError ? (
+                      {collaborationError ? (
                         <Alert variant="destructive">
                           <AlertCircle className="h-4 w-4" />
-                          <AlertTitle>Realtime sync issue</AlertTitle>
+                          <AlertTitle>Collaboration sync issue</AlertTitle>
                           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <span>
-                              {realtimeError} {realtimeStatus === "retrying" ? "Retrying automatically." : "Reconnect to restore live cursors, chat, and pins."}
+                              {collaborationError} {collaborationStatus === "retrying" ? "Retrying automatically." : "Retry sync to restore live cursors, chat, and pins."}
                             </span>
                             <Button type="button" variant="outline" className="border-red-300 bg-white text-red-700 hover:bg-red-50" onClick={handleReconnectRealtime}>
                               <RefreshCw className="mr-2 h-4 w-4" />
-                              Reconnect realtime
+                              Retry sync
                             </Button>
                           </AlertDescription>
                         </Alert>
@@ -1835,7 +1850,7 @@ export default function PdfWorkspacePage() {
                           </div>
                         </div>
                       </div>
-                    )) : <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">Presence will appear after the realtime channel finishes joining.</div>}
+                    )) : <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">Participants appear after the browser writes its first heartbeat for this session.</div>}
                   </div>
                 </CardContent>
               </Card>
@@ -1911,8 +1926,8 @@ export default function PdfWorkspacePage() {
                           <span className="text-right font-medium text-slate-950">{metadata?.uploadedAt ?? "Not uploaded yet"}</span>
                         </div>
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
-                          <p className="font-medium text-slate-950">Presence sync</p>
-                          <p className="mt-2">Supabase Presence keeps reviewer cursors live in the active session, while sessions, pins, and shared notes now all sync on the same <code>session_id</code>.</p>
+                          <p className="font-medium text-slate-950">Collaboration sync</p>
+                          <p className="mt-2">Each browser writes a server-backed participant heartbeat row for cursors, tool mode, and call status. The PDF session, pins, and chat are reloaded on a short polling interval so the room stays usable across browsers even if websocket presence is flaky.</p>
                         </div>
                       </div>
                       {sessionError ? (
