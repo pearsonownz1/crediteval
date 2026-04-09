@@ -28,3 +28,21 @@ export default {
 - Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
 - Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
 - Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+
+## Voice Assistant Prototype
+
+The internal `/voice` route uses the Supabase Edge Function at `supabase/functions/voice-assistant`.
+
+Required server-side env vars:
+
+- `OPENAI_API_KEY`
+
+Optional overrides:
+
+- `OPENAI_TRANSCRIPTION_MODEL` default `gpt-4o-mini-transcribe`
+- `OPENAI_VOICE_ASSISTANT_MODEL` default `gpt-4.1-mini`
+- `OPENAI_TTS_MODEL` default `gpt-4o-mini-tts`
+- `OPENAI_TTS_VOICE` default `alloy`
+- `VOICE_ASSISTANT_SYSTEM_PROMPT` for assistant behavior tuning
+
+The browser records microphone audio locally, sends each clip to the edge function for transcription and assistant generation, and receives generated speech back for playback. Keep the OpenAI key server-side only.

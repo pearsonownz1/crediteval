@@ -38,6 +38,7 @@ import { QuoteDetailsPage } from "./pages/QuoteDetailsPage"; // Import QuoteDeta
 import FunnelDashboard from "./pages/FunnelDashboard";
 import PdfWorkspacePage from "./pages/PdfWorkspacePage";
 import CallPage from "./pages/CallPage";
+import VoiceAssistantPage from "./pages/VoiceAssistantPage";
 import { Toaster } from "@/components/ui/toaster"; // Import Toaster
 
 function App() {
@@ -86,6 +87,14 @@ function App() {
             element={
               <Layout>
                 <CallPage />
+              </Layout>
+            }
+          />
+          <Route
+            path="/voice"
+            element={
+              <Layout>
+                <VoiceAssistantPage />
               </Layout>
             }
           />
