@@ -39,6 +39,7 @@ import FunnelDashboard from "./pages/FunnelDashboard";
 import PdfWorkspacePage from "./pages/PdfWorkspacePage";
 import CallPage from "./pages/CallPage";
 import VoiceAssistantPage from "./pages/VoiceAssistantPage";
+import PracticeOSAppPage from "./pages/PracticeOSAppPage";
 import { Toaster } from "@/components/ui/toaster"; // Import Toaster
 
 function App() {
@@ -95,6 +96,14 @@ function App() {
             element={
               <Layout>
                 <VoiceAssistantPage />
+              </Layout>
+            }
+          />
+          <Route
+            path="/app"
+            element={
+              <Layout>
+                <PracticeOSAppPage />
               </Layout>
             }
           />
