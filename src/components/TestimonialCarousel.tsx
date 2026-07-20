@@ -95,7 +95,7 @@ const TestimonialCarousel = () => {
     <div className="py-12 bg-gray-50"> {/* Section background */}
       <div className="container mx-auto px-4">
         <h2 className="text-3xl font-bold text-center mb-8 text-gray-800">
-          What Our Clients Say
+          What Our Friends Say
         </h2>
         <Slider {...settings}>
           {testimonials.map((testimonial) => {
