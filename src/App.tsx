@@ -5,6 +5,7 @@ import Layout from "./components/Layout"; // Import the Layout component
 import Home from "./components/home";
 import OrderPage from "./components/OrderPage";
 import TranslationServices from "./components/TranslationServices";
+import CertifiedTranslationsNewYork from "./components/CertifiedTranslationsNewYork";
 import EvaluationServices from "./components/EvaluationServices";
 import ExpertOpinionLetters from "./components/ExpertOpinionLetters";
 import ExpertOpinionLettersNewYork from "./components/ExpertOpinionLettersNewYork";
@@ -74,6 +75,18 @@ function App() {
             element={
               <Layout>
                 <TranslationServices />
+              </Layout>
+            }
+          />
+          <Route
+            path="/certified-translations/new-york-ny"
+            element={
+              <Layout>
+                <PageHead
+                  title="Certified Translation in New York | CreditEval"
+                  canonical="https://www.crediteval.com/certified-translations/new-york-ny"
+                />
+                <CertifiedTranslationsNewYork />
               </Layout>
             }
           />
