@@ -7,6 +7,7 @@ import OrderPage from "./components/OrderPage";
 import TranslationServices from "./components/TranslationServices";
 import EvaluationServices from "./components/EvaluationServices";
 import ExpertOpinionLetters from "./components/ExpertOpinionLetters";
+import ExpertOpinionLettersNewYork from "./components/ExpertOpinionLettersNewYork";
 import PageHead from "./components/PageHead";
 import AboutUs from "./components/AboutUs";
 import ContactUs from "./components/ContactUs";
@@ -125,6 +126,18 @@ function App() {
                   canonical="https://www.crediteval.com/expert-opinion"
                 />
                 <ExpertOpinionLetters />
+              </Layout>
+            }
+          />
+          <Route
+            path="/expert-opinion-letters/new-york-ny"
+            element={
+              <Layout>
+                <PageHead
+                  title="Expert Opinion Letter in New York | CreditEval"
+                  canonical="https://www.crediteval.com/expert-opinion-letters/new-york-ny"
+                />
+                <ExpertOpinionLettersNewYork />
               </Layout>
             }
           />
