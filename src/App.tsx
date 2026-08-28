@@ -7,6 +7,7 @@ import OrderPage from "./components/OrderPage";
 import TranslationServices from "./components/TranslationServices";
 import CertifiedTranslationsNewYork from "./components/CertifiedTranslationsNewYork";
 import EvaluationServices from "./components/EvaluationServices";
+import CredentialEvaluationNewYork from "./components/CredentialEvaluationNewYork";
 import ExpertOpinionLetters from "./components/ExpertOpinionLetters";
 import ExpertOpinionLettersNewYork from "./components/ExpertOpinionLettersNewYork";
 import PageHead from "./components/PageHead";
@@ -127,6 +128,18 @@ function App() {
             element={
               <Layout>
                 <EvaluationServices />
+              </Layout>
+            }
+          />
+          <Route
+            path="/credential-evaluation-services/new-york-ny"
+            element={
+              <Layout>
+                <PageHead
+                  title="Credential Evaluation for New York Employers and School Applications | CreditEval"
+                  canonical="https://www.crediteval.com/credential-evaluation-services/new-york-ny"
+                />
+                <CredentialEvaluationNewYork />
               </Layout>
             }
           />
