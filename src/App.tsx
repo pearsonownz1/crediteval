@@ -83,7 +83,7 @@ function App() {
             element={
               <Layout>
                 <PageHead
-                  title="Certified Translation in New York | CreditEval"
+                  title="Certified Translation for New York Court and USCIS Filings | CreditEval"
                   canonical="https://www.crediteval.com/certified-translations/new-york-ny"
                 />
                 <CertifiedTranslationsNewYork />
