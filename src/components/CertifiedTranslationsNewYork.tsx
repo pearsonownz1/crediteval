@@ -8,11 +8,11 @@ const CertifiedTranslationsNewYork = () => {
         <div className="container">
           <div className="max-w-3xl mx-auto text-center">
             <h1 className="text-4xl font-bold tracking-tight text-gray-900 mb-4">
-              Certified Translations in New York
+              Certified translations for New York court and USCIS filings
             </h1>
             <p className="text-lg text-gray-600 mb-8">
-              For people in New York who need a USCIS-accepted certified
-              translation. Preview first. Pay when you are ready.
+              New York courts and USCIS both require an English translation.
+              They do not use the same translator attestation.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <Link to="/translation">
@@ -37,18 +37,27 @@ const CertifiedTranslationsNewYork = () => {
         <div className="container">
           <div className="max-w-3xl mx-auto">
             <h2 className="text-3xl font-bold mb-6">
-              Certified translations for New York customers
+              CPLR 2101(b) and 8 CFR 103.2(b)(3)
             </h2>
             <p className="text-gray-600 mb-4">
-              If you are in New York and need a USCIS-accepted certified
-              translation, CreditEval prepares that translation and lets you
-              preview it before you pay. We fulfill nationwide, including
-              online.
+              New York court papers in a foreign language fall under CPLR
+              2101(b). The English translation must come with an affidavit from
+              the translator stating that the translation is accurate and that
+              they are competent to translate.
             </p>
             <p className="text-gray-600 mb-4">
-              This page is for New York customers. It is not a local office
-              listing. For the preview-first flow, the documents we accept, and
-              how to start, see{" "}
+              USCIS filings fall under 8 CFR 103.2(b)(3). Any foreign-language
+              document must come with a full English translation and a
+              translator certification that it is complete and accurate, and
+              that the translator is competent to translate into English.
+            </p>
+            <p className="text-gray-600 mb-4">
+              Same translation. Two attestations, depending on where the filing
+              goes. CreditEval prepares the certified translation online.
+              Preview first. Pay when you are ready. We fulfill nationwide.
+            </p>
+            <p className="text-gray-600">
+              For the upload and preview flow, see{" "}
               <Link
                 to="/translation"
                 className="text-primary underline underline-offset-2 hover:text-primary/80"
@@ -56,11 +65,6 @@ const CertifiedTranslationsNewYork = () => {
                 Certified Translation
               </Link>
               .
-            </p>
-            <p className="text-gray-600">
-              Upload the document, review a watermarked preview, and unlock the
-              final certified PDF when you are ready. Notarization and mailing
-              are optional at checkout.
             </p>
           </div>
         </div>
