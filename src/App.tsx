@@ -7,6 +7,7 @@ import OrderPage from "./components/OrderPage";
 import TranslationServices from "./components/TranslationServices";
 import EvaluationServices from "./components/EvaluationServices";
 import ExpertOpinionLetters from "./components/ExpertOpinionLetters";
+import PageHead from "./components/PageHead";
 import AboutUs from "./components/AboutUs";
 import ContactUs from "./components/ContactUs";
 import Login from "./components/Auth/Login"; // Import Login
@@ -119,6 +120,10 @@ function App() {
             path="/expert-opinion"
             element={
               <Layout>
+                <PageHead
+                  title="Expert Opinion Letter for NIW | CreditEval"
+                  canonical="https://www.crediteval.com/expert-opinion"
+                />
                 <ExpertOpinionLetters />
               </Layout>
             }
